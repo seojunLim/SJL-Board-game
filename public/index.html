@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+<title>SJL 보드게임</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>🎲 SJL 보드게임</h1>
+  <div class="who">
+    <label>닉네임 <input id="nick" maxlength="16" placeholder="이름"></label>
+    <span id="conn" class="pill off">연결 중…</span>
+  </div>
+</header>
+
+<main id="lobby" class="wrap">
+  <section class="panel">
+    <h2>게임 고르기</h2>
+    <div id="gameGrid" class="grid"></div>
+    <div id="createBox" class="createBox hidden">
+      <div class="row">
+        <strong id="createTitle"></strong>
+        <div id="createOpts"></div>
+        <button id="createBtn" class="primary">방 만들기</button>
+        <button id="createCancel" class="ghost">취소</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>방 참가</h2>
+    <div class="row">
+      <input id="joinCode" class="code" maxlength="4" placeholder="코드 4자리">
+      <button id="joinBtn" class="primary">입장</button>
+      <button id="spectateBtn" class="ghost">관전</button>
+    </div>
+    <h3>열려 있는 방</h3>
+    <div id="roomList" class="roomList"><p class="muted">아직 방이 없습니다.</p></div>
+  </section>
+</main>
+
+<main id="room" class="wrap hidden">
+  <section class="panel roomHead">
+    <div>
+      <h2>방 <span id="roomCode" class="code-badge"></span> · <span id="roomGame"></span></h2>
+      <div id="seatList" class="seats"></div>
+    </div>
+    <div class="roomActions">
+      <button id="readyBtn" class="primary">준비</button>
+      <button id="rematchBtn" class="primary hidden">한 판 더</button>
+      <button id="leaveBtn" class="ghost">나가기</button>
+    </div>
+  </section>
+  <section class="playArea">
+    <div id="board" class="board"></div>
+    <aside class="side">
+      <div id="status" class="status"></div>
+      <div id="panelExtra"></div>
+      <div class="chat">
+        <div id="chatLog" class="chatLog"></div>
+        <form id="chatForm"><input id="chatInput" maxlength="300" placeholder="채팅…" autocomplete="off"><button>전송</button></form>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

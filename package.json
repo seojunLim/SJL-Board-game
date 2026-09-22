@@ -1,0 +1,25 @@
+{
+  "name": "sjl-board-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Online multiplayer board game site: Chess, Go, Othello, Da Vinci Code, Loopin' Louie, Halli Galli",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node test/engines.test.js && node test/server.test.js",
+    "test:browser": "node test/browser.test.js",
+    "test:all": "npm test && npm run test:browser"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "socket.io-client": "^4.8.3"
+  }
+}
