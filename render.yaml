@@ -1,11 +1,18 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# 대시보드에서 "New +" → "Blueprint" → 이 저장소를 선택하면 그대로 올라갑니다.
 services:
   - type: web
     name: sjl-board-game
-    env: node
-    plan: free
+    runtime: node
+    plan: free          # 유료로 바꾸려면 starter 이상 (free는 15분 무접속 시 잠듦)
+    region: singapore   # 한국에서 가장 가까운 리전
+    branch: claude/multiplayer-board-game-website-jchxz2
     buildCommand: npm ci --omit=dev
     startCommand: node server.js
     healthCheckPath: /healthz
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: NODE_ENV
+        value: production
