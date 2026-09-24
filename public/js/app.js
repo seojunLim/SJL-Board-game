@@ -4,14 +4,15 @@ const socket = io();
 const $ = s => document.querySelector(s);
 const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
 
-const EMOJI = { chess: '♞', go: '⚫', othello: '⚪', davinci: '🔢', louie: '✈️', halligalli: '🔔' };
+const EMOJI = { chess: '♞', go: '⚫', othello: '⚪', davinci: '🔢', louie: '✈️', halligalli: '🔔', uno: '🃏' };
 const DESC = {
   chess: '정식 체스 규칙 (캐슬링·앙파상·승격)',
   go: '19/13/9로 · 패 · 계가',
   othello: '8×8 정식 리버시',
   davinci: '숫자 추리 · 2~4인',
   louie: '실시간 반사신경 · 2~4인',
-  halligalli: '실시간 종치기 · 2~6인'
+  halligalli: '실시간 종치기 · 2~6인',
+  uno: '정식 108장 · 2~6인'
 };
 
 let me = { name: '', id: null };

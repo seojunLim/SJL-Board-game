@@ -5,9 +5,9 @@ const assert = require('assert');
 const { chromium } = require('playwright');
 const { server } = require('../server');
 
-const GAMES = ['chess', 'go', 'othello', 'davinci', 'louie', 'halligalli'];
+const GAMES = ['chess', 'go', 'othello', 'davinci', 'louie', 'halligalli', 'uno'];
 const THREE_D = new Set(['chess', 'go', 'othello']);
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노' };
 
 (async () => {
   await new Promise(res => server.listen(0, res));
@@ -69,6 +69,14 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
     if (gameId === 'davinci') {
       await host.waitForSelector('.dvRow', { timeout: 8000 });
       console.log('  ✓ davinci: tile rows rendered');
+    }
+    if (gameId === 'uno') {
+      await host.waitForFunction(() => document.querySelectorAll('.unoHand .ucard').length === 7);
+      await host.waitForSelector('.topCard .sym');
+      // host is seat 0 and starts; draw one card and check the log reacts
+      await host.click('.drawPile');
+      await host.waitForFunction(() => /뽑았습니다|넘겼습니다|:/.test(document.querySelector('#panelExtra').textContent));
+      console.log('  ✓ uno: hand of 7, discard shown, draw works');
     }
 
     await host.click('#leaveBtn');

@@ -150,3 +150,44 @@ button.ghost{background:transparent}
   .playArea{grid-template-columns:1fr}
   .side{order:2}
 }
+
+/* ---------- uno ---------- */
+.unoWrap{display:grid;gap:14px;width:100%}
+.unoTop{display:flex;gap:20px;flex-wrap:wrap;align-items:center;justify-content:center}
+.unoOpps{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.unoOpp{background:var(--panel2);border:2px solid var(--line);border-radius:10px;padding:8px 12px;text-align:center;font-size:13px;min-width:90px}
+.unoOpp.turn{border-color:var(--accent);box-shadow:0 0 16px rgba(77,163,255,.25)}
+.unoOpp .cnt{font-size:22px;font-weight:800}
+.unoOpp .catch{margin-top:6px;padding:4px 8px;font-size:12px}
+.unoCenter{display:flex;gap:24px;align-items:center;justify-content:center;flex-wrap:wrap;
+  background:radial-gradient(circle at 50% 50%,#1c2b3a,#141b22);border:1px solid var(--line);border-radius:14px;padding:18px 24px}
+.unoPile{display:grid;gap:6px;justify-items:center;font-size:12px;color:var(--muted)}
+.unoDir{font-size:30px}
+.unoColor{width:30px;height:30px;border-radius:50%;border:2px solid #fff3}
+.ucard{width:64px;height:96px;border-radius:10px;position:relative;display:flex;align-items:center;justify-content:center;
+  font-weight:900;font-size:26px;color:#fff;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.45);
+  text-shadow:0 2px 3px rgba(0,0,0,.5)}
+.ucard::before{content:'';position:absolute;inset:6px;border-radius:50%/40%;border:2px solid rgba(255,255,255,.5)}
+.ucard.r{background:linear-gradient(#e0402f,#b52a1c)}
+.ucard.y{background:linear-gradient(#f0c02a,#d19a10)}
+.ucard.g{background:linear-gradient(#3fa04a,#277a30)}
+.ucard.b{background:linear-gradient(#3877d0,#2456a5)}
+.ucard.w{background:conic-gradient(#e0402f 0 90deg,#f0c02a 90deg 180deg,#3fa04a 180deg 270deg,#3877d0 270deg)}
+.ucard .sym{position:relative;z-index:1;font-size:22px}
+.ucard.small{width:46px;height:70px;font-size:18px;border-width:2px}
+.unoHand{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;min-height:100px;padding:6px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:12px}
+.unoHand .ucard{cursor:default;transition:transform .12s}
+.unoHand .ucard.play{cursor:pointer}
+.unoHand .ucard.play:hover{transform:translateY(-10px)}
+.unoHand .ucard.dim{opacity:.4}
+.unoActions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.unoBtn.uno{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:800;animation:unoPulse 1s infinite}
+@keyframes unoPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5)}50%{box-shadow:0 0 0 10px rgba(248,113,113,0)}}
+.colorPick{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60}
+.colorPick .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:14px;text-align:center}
+.colorPick .swatches{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.colorPick .sw{width:90px;height:90px;border-radius:12px;cursor:pointer;border:3px solid #fff2}
+.colorPick .sw:hover{border-color:#fff}
+.colorPick .sw.r{background:#e0402f}.colorPick .sw.y{background:#f0c02a}
+.colorPick .sw.g{background:#3fa04a}.colorPick .sw.b{background:#3877d0}

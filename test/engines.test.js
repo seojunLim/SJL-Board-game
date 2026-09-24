@@ -9,6 +9,7 @@ function t(name, fn) {
   catch (e) { console.error('  ✗ ' + name + '\n    ' + e.message); process.exitCode = 1; }
 }
 const P2 = [{ name: 'A' }, { name: 'B' }];
+const THREE_P = [{ name: 'A' }, { name: 'B' }, { name: 'C' }];
 
 console.log('chess');
 const chess = games.byId.chess;
@@ -193,6 +194,95 @@ t('the last player with chickens wins', () => {
   lo.tick(s);
   assert.strictEqual(s.over, true);
   assert.strictEqual(s.winner, 0);
+});
+
+console.log('uno');
+const uno = games.byId.uno;
+t('deck is 108 cards with the standard distribution', () => {
+  const d = uno._internals.buildDeck();
+  assert.strictEqual(d.length, 108);
+  const c = { num: 0, skip: 0, rev: 0, d2: 0, wild: 0, wd4: 0 };
+  d.forEach(x => c[x.kind]++);
+  assert.deepStrictEqual(c, { num: 76, skip: 8, rev: 8, d2: 8, wild: 4, wd4: 4 });
+});
+t('deals seven cards each and turns up a starter', () => {
+  const s = uno.create(P2);
+  assert.deepStrictEqual(s.hands.map(h => h.length), [7, 7]);
+  assert.strictEqual(s.discard.length, 1);
+  assert.notStrictEqual(s.color, 'w');
+});
+t('playable matches colour, number, symbol or wild', () => {
+  const ip = uno._internals.isPlayable;
+  const top = { color: 'r', kind: 'num', value: 5 };
+  assert.ok(ip({ color: 'r', kind: 'num', value: 9 }, 'r', top));   // colour
+  assert.ok(ip({ color: 'b', kind: 'num', value: 5 }, 'r', top));   // number
+  assert.ok(ip({ color: 'g', kind: 'wild' }, 'r', top));            // wild
+  assert.ok(!ip({ color: 'b', kind: 'num', value: 9 }, 'r', top));  // nothing
+  const sk = { color: 'r', kind: 'skip' };
+  assert.ok(ip({ color: 'b', kind: 'skip' }, 'r', sk));             // symbol
+});
+t('a matching card can be played and advances the turn', () => {
+  const s = uno.create(P2);
+  s.hands[0] = [{ color: s.color, kind: 'num', value: 3 }, { color: 'b', kind: 'num', value: 8 }];
+  s.discard = [{ color: s.color, kind: 'num', value: 7 }];
+  s.phase = 'play'; s.turn = 0;
+  assert.ok(!uno.move(s, 0, { type: 'play', index: 0 }).error);
+  assert.strictEqual(s.turn, 1);
+  assert.strictEqual(s.hands[0].length, 1);
+});
+t('an illegal play is rejected', () => {
+  const s = uno.create(P2);
+  s.color = 'r'; s.discard = [{ color: 'r', kind: 'num', value: 7 }];
+  s.hands[0] = [{ color: 'b', kind: 'num', value: 9 }]; s.turn = 0; s.phase = 'play';
+  assert.ok(uno.move(s, 0, { type: 'play', index: 0 }).error);
+});
+t('draw two makes the next player draw and be skipped', () => {
+  const s = uno.create(THREE_P);
+  s.color = 'r'; s.discard = [{ color: 'r', kind: 'num', value: 1 }];
+  s.hands[0] = [{ color: 'r', kind: 'd2' }, { color: 'b', kind: 'num', value: 2 }];
+  s.turn = 0; s.dir = 1; s.phase = 'play';
+  const before = s.hands[1].length;
+  uno.move(s, 0, { type: 'play', index: 0 });
+  assert.strictEqual(s.hands[1].length, before + 2);
+  assert.strictEqual(s.turn, 2);
+});
+t('wild draw four needs a chosen colour and sets it', () => {
+  const s = uno.create(P2);
+  s.hands[0] = [{ color: 'w', kind: 'wd4' }, { color: 'b', kind: 'num', value: 2 }];
+  s.discard = [{ color: 'r', kind: 'num', value: 7 }]; s.color = 'r'; s.turn = 0; s.phase = 'play';
+  assert.ok(uno.move(s, 0, { type: 'play', index: 0 }).error, 'needs colour');
+  const before = s.hands[1].length;
+  uno.move(s, 0, { type: 'play', index: 0, chosenColor: 'g' });
+  assert.strictEqual(s.color, 'g');
+  assert.strictEqual(s.hands[1].length, before + 4);
+});
+t('reverse acts as a skip with two players', () => {
+  const s = uno.create(P2);
+  s.color = 'r'; s.discard = [{ color: 'r', kind: 'num', value: 1 }];
+  s.hands[0] = [{ color: 'r', kind: 'rev' }, { color: 'b', kind: 'num', value: 2 }];
+  s.turn = 0; s.phase = 'play';
+  uno.move(s, 0, { type: 'play', index: 0 });
+  assert.strictEqual(s.turn, 0);
+});
+t('emptying the hand wins', () => {
+  const s = uno.create(P2);
+  s.color = 'r'; s.discard = [{ color: 'r', kind: 'num', value: 1 }];
+  s.hands[0] = [{ color: 'r', kind: 'num', value: 5 }]; s.turn = 0; s.phase = 'play'; s.uno[0] = true;
+  uno.move(s, 0, { type: 'play', index: 0 });
+  assert.strictEqual(s.over, true);
+  assert.strictEqual(s.winner, 0);
+});
+t('a missed UNO can be caught for +2', () => {
+  const s = uno.create(P2);
+  s.color = 'r'; s.discard = [{ color: 'r', kind: 'num', value: 1 }];
+  s.hands[0] = [{ color: 'r', kind: 'num', value: 5 }, { color: 'b', kind: 'num', value: 9 }];
+  s.turn = 0; s.phase = 'play';
+  uno.move(s, 0, { type: 'play', index: 0 });        // down to 1, no UNO called
+  assert.strictEqual(s.pendingUno[0], true);
+  const before = s.hands[0].length;
+  uno.move(s, 1, { type: 'catch', target: 0 });
+  assert.strictEqual(s.hands[0].length, before + 2);
+  assert.strictEqual(s.pendingUno[0], false);
 });
 
 console.log('registry');

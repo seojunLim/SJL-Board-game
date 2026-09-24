@@ -5,7 +5,8 @@ const list = [
   require('./othello'),
   require('./davinci'),
   require('./louie'),
-  require('./halligalli')
+  require('./halligalli'),
+  require('./uno')
 ];
 const byId = {};
 for (const g of list) byId[g.id] = g;
