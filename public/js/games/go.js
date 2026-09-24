@@ -1,135 +1,145 @@
+import { Stage, THREE } from '../three3d/scene.js';
+
 export default function go(ctx) {
-  const wrap = document.createElement('div');
-  wrap.style.display = 'grid'; wrap.style.gap = '10px'; wrap.style.justifyItems = 'center';
-  const holder = document.createElement('div'); holder.className = 'goboard';
-  const canvas = document.createElement('canvas');
-  holder.appendChild(canvas);
-  const bar = document.createElement('div'); bar.className = 'row';
-  wrap.append(holder, bar); ctx.root.appendChild(wrap);
+  const holder = document.createElement('div'); holder.style.width = '100%';
+  const bar = document.createElement('div'); bar.className = 'row'; bar.style.marginTop = '10px';
+  ctx.root.appendChild(holder); ctx.root.appendChild(bar);
   const log = document.createElement('div'); log.className = 'log';
   ctx.extra.innerHTML = ''; ctx.extra.appendChild(log);
 
-  const passB = document.createElement('button'); passB.textContent = '패스'; passB.className = 'primary';
-  passB.onclick = () => ctx.send({ type: 'pass' });
-  const acceptB = document.createElement('button'); acceptB.textContent = '계가 동의'; acceptB.className = 'primary hidden';
-  acceptB.onclick = () => ctx.send({ type: 'accept-score' });
-  const resumeB = document.createElement('button'); resumeB.textContent = '대국 재개'; resumeB.className = 'ghost hidden';
-  resumeB.onclick = () => ctx.send({ type: 'resume' });
-  const resign = document.createElement('button'); resign.textContent = '기권'; resign.className = 'ghost';
-  resign.onclick = () => { if (confirm('정말 기권하시겠습니까?')) ctx.send({ type: 'resign' }); };
-  bar.append(passB, acceptB, resumeB, resign);
+  const stage = new Stage(holder, { radius: 12, minR: 7, maxR: 20, phi: 0.62, targetY: 0 });
 
-  let st = null, seat = -1, hover = null;
-
-  function geom() {
-    const px = canvas.width;
-    const pad = px / (st.n + 1);
-    const step = (px - pad * 2) / (st.n - 1);
-    return { pad, step, r: step * 0.46 };
-  }
-  function toXY(r, c) { const g = geom(); return [g.pad + c * g.step, g.pad + r * g.step]; }
-  function fromEvent(e) {
-    const rect = canvas.getBoundingClientRect();
-    const scale = canvas.width / rect.width;
-    const x = (e.clientX - rect.left) * scale, y = (e.clientY - rect.top) * scale;
-    const g = geom();
-    const c = Math.round((x - g.pad) / g.step), r = Math.round((y - g.pad) / g.step);
-    if (r < 0 || c < 0 || r >= st.n || c >= st.n) return null;
-    const [px, py] = toXY(r, c);
-    if (Math.hypot(px - x, py - y) > g.step * 0.62) return null;
+  const EXT = 8;                              // playable span in world units
+  let n = 19, spacing = EXT / 18, sr = 0.2;   // set per game
+  const origin = -EXT / 2;
+  const toWorld = (r, c) => [origin + c * spacing, origin + r * spacing];
+  const nearest = (pt) => {
+    const c = Math.round((pt.x - origin) / spacing), r = Math.round((pt.z - origin) / spacing);
+    if (r < 0 || c < 0 || r >= n || c >= n) return null;
     return { r, c };
+  };
+
+  // Kaya-wood board.
+  const boardMat = new THREE.MeshStandardMaterial({ color: 0xd9b45a, roughness: 0.65 });
+  const board = new THREE.Mesh(new THREE.BoxGeometry(EXT + 1.6, 0.6, EXT + 1.6), boardMat);
+  board.position.y = -0.3; board.receiveShadow = true; stage.scene.add(board);
+  const gridGroup = new THREE.Group(); stage.scene.add(gridGroup);
+  const stonesGroup = new THREE.Group(); stage.scene.add(stonesGroup);
+  const overlay = new THREE.Group(); stage.scene.add(overlay);
+
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.25, metalness: 0.1 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f1ea, roughness: 0.4 });
+  const stoneGeo = new THREE.SphereGeometry(1, 24, 18);   // scaled per placement
+
+  function buildGrid() {
+    gridGroup.clear();
+    const mat = new THREE.LineBasicMaterial({ color: 0x5a3d12 });
+    const a0 = origin, a1 = origin + (n - 1) * spacing;
+    for (let i = 0; i < n; i++) {
+      const p = origin + i * spacing;
+      gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(p, 0.02, a0), new THREE.Vector3(p, 0.02, a1)]), mat));
+      gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a0, 0.02, p), new THREE.Vector3(a1, 0.02, p)]), mat));
+    }
+    const stars = n === 19 ? [3, 9, 15] : n === 13 ? [3, 6, 9] : n === 9 ? [2, 4, 6] : [];
+    const dotMat = new THREE.MeshStandardMaterial({ color: 0x3a2606 });
+    for (const a of stars) for (const b of stars) {
+      const [x, z] = toWorld(a, b);
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(spacing * 0.09, spacing * 0.09, 0.03, 16), dotMat);
+      d.position.set(x, 0.03, z); gridGroup.add(d);
+    }
+    // One large invisible pick plane covering the board.
+    const plane = gridGroup.getObjectByName('pick') || new THREE.Mesh(
+      new THREE.PlaneGeometry(EXT + 1.2, EXT + 1.2).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    plane.name = 'pick'; plane.position.y = 0.02; plane.userData.pick = { plane: true };
+    gridGroup.add(plane);
+    stage.setPickables([plane]);
   }
 
-  function starPoints(n) {
-    if (n === 19) return [3, 9, 15];
-    if (n === 13) return [3, 6, 9];
-    if (n === 9) return [2, 4, 6];
-    return [];
+  function stone(color, r, c, opts = {}) {
+    const m = new THREE.Mesh(stoneGeo, color === 1 ? blackMat : whiteMat);
+    m.scale.set(sr, sr * 0.42, sr);
+    const [x, z] = toWorld(r, c); m.position.set(x, sr * 0.42, z);
+    m.castShadow = true; m.receiveShadow = true;
+    if (opts.ghost) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.45; m.castShadow = false; }
+    if (opts.dead) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.3; }
+    return m;
   }
 
-  function draw() {
-    if (!st) return;
-    const size = Math.min(holder.clientWidth, 900) * (window.devicePixelRatio || 1);
-    if (canvas.width !== Math.round(size)) { canvas.width = canvas.height = Math.round(size); }
-    const g2 = canvas.getContext('2d');
-    const px = canvas.width;
-    const g = geom();
-    g2.clearRect(0, 0, px, px);
-    g2.strokeStyle = '#3c2b17'; g2.lineWidth = Math.max(1, px / 700);
-    for (let i = 0; i < st.n; i++) {
-      const p = g.pad + i * g.step;
-      g2.beginPath(); g2.moveTo(g.pad, p); g2.lineTo(px - g.pad, p); g2.stroke();
-      g2.beginPath(); g2.moveTo(p, g.pad); g2.lineTo(p, px - g.pad); g2.stroke();
-    }
-    g2.fillStyle = '#3c2b17';
-    for (const a of starPoints(st.n)) for (const b of starPoints(st.n)) {
-      const [x, y] = toXY(a, b);
-      g2.beginPath(); g2.arc(x, y, Math.max(2, g.step * 0.09), 0, 7); g2.fill();
-    }
-    const deadSet = new Set(st.dead || []);
-    for (let r = 0; r < st.n; r++) for (let c = 0; c < st.n; c++) {
+  let st = null, seat = -1, hover = null, ghost = null;
+
+  function sync() {
+    stonesGroup.clear(); overlay.clear();
+    const dead = new Set(st.dead || []);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const v = st.board[r][c];
-      if (!v) continue;
-      const [x, y] = toXY(r, c);
-      const dead = deadSet.has(r + ',' + c);
-      g2.globalAlpha = dead ? 0.3 : 1;
-      const grd = g2.createRadialGradient(x - g.r * .35, y - g.r * .4, g.r * .1, x, y, g.r);
-      if (v === 1) { grd.addColorStop(0, '#5a5a5a'); grd.addColorStop(1, '#080808'); }
-      else { grd.addColorStop(0, '#ffffff'); grd.addColorStop(1, '#c2c2c2'); }
-      g2.fillStyle = grd;
-      g2.beginPath(); g2.arc(x, y, g.r, 0, 7); g2.fill();
-      g2.globalAlpha = 1;
-      if (st.lastMove && st.lastMove.r === r && st.lastMove.c === c) {
-        g2.strokeStyle = '#ff5252'; g2.lineWidth = Math.max(2, px / 320);
-        g2.beginPath(); g2.arc(x, y, g.r * 0.45, 0, 7); g2.stroke();
-      }
+      if (v) stonesGroup.add(stone(v, r, c, { dead: dead.has(r + ',' + c) }));
     }
-    if (hover && !st.over && st.phase === 'play' && st.turn === seat && !st.board[hover.r][hover.c]) {
-      const [x, y] = toXY(hover.r, hover.c);
-      g2.globalAlpha = 0.45;
-      g2.fillStyle = seat === 0 ? '#000' : '#fff';
-      g2.beginPath(); g2.arc(x, y, g.r, 0, 7); g2.fill();
-      g2.globalAlpha = 1;
+    if (st.lastMove && st.lastMove.r != null) {
+      const [x, z] = toWorld(st.lastMove.r, st.lastMove.c);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(sr * 0.5, sr * 0.08, 8, 24).rotateX(Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0xff4d4d }));
+      ring.position.set(x, sr * 0.85, z); overlay.add(ring);
     }
+    drawStatus();
+  }
 
+  stage.onHover = (pick, point) => {
+    if (!st || st.over || st.phase !== 'play' || st.turn !== seat || !point) { setGhost(null); return; }
+    const g = nearest(point);
+    if (g && st.board[g.r][g.c] === 0) setGhost(g); else setGhost(null);
+  };
+  function setGhost(g) {
+    if ((g && hover && g.r === hover.r && g.c === hover.c) || (!g && !hover)) return;
+    hover = g;
+    if (ghost) { stage.scene.remove(ghost); ghost = null; }
+    if (g) { ghost = stone(seat === 0 ? 1 : 2, g.r, g.c, { ghost: true }); stage.scene.add(ghost); }
+  }
+
+  stage.onPick = (pick, point) => {
+    if (!st || st.over || !point) return;
+    const g = nearest(point); if (!g) return;
+    if (st.phase === 'scoring') ctx.send({ type: 'toggle-dead', r: g.r, c: g.c });
+    else if (st.turn === seat) { ctx.send({ type: 'place', r: g.r, c: g.c }); setGhost(null); }
+  };
+
+  const passB = mkBtn('패스', 'primary', () => ctx.send({ type: 'pass' }));
+  const acceptB = mkBtn('계가 동의', 'primary', () => ctx.send({ type: 'accept-score' }));
+  const resumeB = mkBtn('대국 재개', 'ghost', () => ctx.send({ type: 'resume' }));
+  const resign = mkBtn('기권', 'ghost', () => { if (confirm('정말 기권하시겠습니까?')) ctx.send({ type: 'resign' }); });
+  bar.append(passB, acceptB, resumeB, resign);
+  function mkBtn(t, cls, fn) { const b = document.createElement('button'); b.textContent = t; b.className = cls; b.onclick = fn; return b; }
+
+  function drawStatus() {
     const my = seat === 0 ? '흑' : seat === 1 ? '백' : '관전';
     let s;
     if (st.over) s = `<b>게임 종료</b><br>${st.result}`;
     else if (st.phase === 'scoring') {
       const si = st.scoreInfo || { black: 0, white: 0 };
-      s = `<b>계가 중</b><br>죽은 돌을 클릭해 표시한 뒤 동의하세요.<br>
-        흑 ${si.black} : 백 ${si.white} (덤 ${st.komi})<br>
+      s = `<b>계가 중</b> — 죽은 돌을 클릭해 표시<br>흑 ${si.black} : 백 ${si.white} (덤 ${st.komi})<br>
         <span class="muted">동의: ${st.scoreAccept.map((a, i) => (i === 0 ? '흑' : '백') + (a ? '✅' : '⬜')).join(' ')}</span>`;
-    } else {
-      s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>
-        따낸 돌 — 흑 ${st.captures[0]} / 백 ${st.captures[1]}<br>덤 ${st.komi}`;
-    }
+    } else s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>따냄 — 흑 ${st.captures[0]} / 백 ${st.captures[1]}<br>덤 ${st.komi} · <span class="muted">드래그 회전</span>`;
     ctx.status.innerHTML = s;
-    passB.classList.toggle('hidden', st.phase !== 'play');
-    passB.disabled = st.over || st.turn !== seat;
-    acceptB.classList.toggle('hidden', st.phase !== 'scoring' || st.over);
-    acceptB.disabled = seat < 0 || (st.scoreAccept && st.scoreAccept[seat]);
+    passB.classList.toggle('hidden', st.phase !== 'play'); passB.disabled = st.over || st.turn !== seat;
+    acceptB.classList.toggle('hidden', st.phase !== 'scoring' || st.over); acceptB.disabled = seat < 0 || (st.scoreAccept && st.scoreAccept[seat]);
     resumeB.classList.toggle('hidden', st.phase !== 'scoring' || st.over);
     resign.disabled = st.over || seat < 0;
-
     log.innerHTML = '';
-    st.history.slice(-60).forEach((h, i) => log.appendChild(Object.assign(document.createElement('div'), { textContent: h })));
+    (st.history || []).slice(-60).forEach(h => log.appendChild(Object.assign(document.createElement('div'), { textContent: h })));
     log.scrollTop = log.scrollHeight;
   }
 
-  canvas.addEventListener('mousemove', e => { const p = fromEvent(e); const ch = JSON.stringify(p) !== JSON.stringify(hover); hover = p; if (ch) draw(); });
-  canvas.addEventListener('mouseleave', () => { hover = null; draw(); });
-  canvas.addEventListener('click', e => {
-    const p = fromEvent(e);
-    if (!p || !st || st.over) return;
-    if (st.phase === 'scoring') ctx.send({ type: 'toggle-dead', r: p.r, c: p.c });
-    else if (st.turn === seat) ctx.send({ type: 'place', r: p.r, c: p.c });
-  });
-  const onResize = () => draw();
-  window.addEventListener('resize', onResize);
-
+  let built = null, orientedFor = null;
   return {
-    render(state, mySeat) { st = state; seat = mySeat; draw(); },
-    destroy() { window.removeEventListener('resize', onResize); ctx.root.innerHTML = ''; ctx.extra.innerHTML = ''; }
+    render(state, mySeat) {
+      st = state; seat = mySeat;
+      if (built !== st.n) {
+        n = st.n; spacing = EXT / (n - 1); sr = spacing * 0.47; built = n; buildGrid();
+        stage.radius = n <= 9 ? 10 : n <= 13 ? 12 : 14;
+      }
+      if (orientedFor !== seat) { stage.theta = seat === 1 ? Math.PI : 0; orientedFor = seat; }
+      sync();
+    },
+    destroy() { stage.destroy(); ctx.root.innerHTML = ''; ctx.extra.innerHTML = ''; }
   };
 }
