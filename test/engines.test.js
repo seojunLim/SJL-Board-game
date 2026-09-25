@@ -128,6 +128,15 @@ t('a wrong guess reveals the drawn tile and passes the turn', () => {
   assert.strictEqual(s.turn, 1);
   assert.strictEqual(s.hands[0].length, 5);
 });
+t('drawing by colour takes a tile of that colour', () => {
+  const s = dv.create(P2);
+  const before = dv.view(s, 0).poolColors;
+  dv.move(s, 0, { type: 'draw', color: 'w' });
+  assert.strictEqual(s.drawn.color, 'w');
+  assert.strictEqual(dv.view(s, 0).poolColors.w, before.w - 1);
+  assert.strictEqual(dv.view(s, 1).drawn.color, 'w');
+  assert.ok(!('v' in dv.view(s, 1).drawn), 'value stays hidden from opponents');
+});
 t('hands stay sorted, jokers aside', () => {
   const s = dv.create(P2);
   const keys = s.hands[0].filter(x => x.v !== 12).map(dv._internals.sortKey);

@@ -78,7 +78,8 @@ module.exports = {
       names: state.names, out: state.out, log: state.log.slice(-40),
       over: state.over, winner: state.winner, result: state.result, lastGuess: state.lastGuess,
       mySeat: seat,
-      drawn: (seat === state.turn && state.drawn) ? state.drawn : (state.drawn ? { hidden: true } : null),
+      drawn: (seat === state.turn && state.drawn) ? state.drawn : (state.drawn ? { hidden: true, color: state.drawn.color } : null),
+      poolColors: { b: state.pool.filter(t => t.color === 'b').length, w: state.pool.filter(t => t.color === 'w').length },
       hands: state.hands.map((h, i) => h.map(t => (t.revealed || i === seat || state.over)
         ? { color: t.color, v: t.v, revealed: t.revealed, joker: t.v === JOKER }
         : { color: t.color, revealed: false }))
@@ -93,7 +94,15 @@ module.exports = {
     if (action.type === 'draw') {
       if (state.phase !== 'draw') return { error: '지금은 뽑을 수 없습니다.' };
       if (!state.pool.length) { state.phase = 'guess'; return { ok: true }; }
-      state.drawn = Object.assign(state.pool.pop(), { revealed: false });
+      // Tile colours are visible in the pool, so the player may pick a colour.
+      let idx = state.pool.length - 1;
+      if (action.color === 'b' || action.color === 'w') {
+        const cands = [];
+        state.pool.forEach((t, i) => { if (t.color === action.color) cands.push(i); });
+        if (!cands.length) return { error: (action.color === 'b' ? '검정' : '흰색') + ' 타일이 남아 있지 않습니다.' };
+        idx = cands[Math.floor(Math.random() * cands.length)];
+      }
+      state.drawn = Object.assign(state.pool.splice(idx, 1)[0], { revealed: false });
       state.phase = 'guess';
       return { ok: true };
     }

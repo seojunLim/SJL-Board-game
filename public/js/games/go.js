@@ -1,116 +1,274 @@
-import { Stage, THREE } from '../three3d/scene.js';
+import { Stage, THREE, EASE } from '../three3d/scene.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { woodTexture, shellTexture, paintedTexture } from '../three3d/textures.js';
+import { btn, el, fillLog } from '../three3d/ui.js';
+import { sfx } from '../three3d/sound.js';
+
+// Go on a kaya table goban: grid and hoshi painted into the wood, biconvex
+// slate & shell stones, paulownia-style bowls with lids that hold captures,
+// stones that drop and settle, a ghost stone under the cursor, and territory
+// markers during scoring.
+
+const EXT = 8.6;            // grid span in world units (any board size)
+const H = 0.9;              // goban thickness
+const W = EXT + 1.1;        // goban footprint
+const NB = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+function gobanTop(n) {
+  const kaya = woodTexture({ light: 0xf0cf8a, dark: 0xd2a860, rings: 10, seed: 41, figure: 0.55, streak: 0.22 });
+  return paintedTexture('goban-' + n, 2048, 2048, (g, S) => {
+    g.drawImage(kaya.canvas, 0, 0, S, S);
+    const ppu = S / W;
+    const o = (W - EXT) / 2 * ppu, step = EXT / (n - 1) * ppu;
+    g.strokeStyle = 'rgba(30,18,6,0.92)';
+    g.lineCap = 'square';
+    for (let i = 0; i < n; i++) {
+      g.lineWidth = i === 0 || i === n - 1 ? 5 : 2.6;
+      g.beginPath(); g.moveTo(o + i * step, o); g.lineTo(o + i * step, o + (n - 1) * step); g.stroke();
+      g.beginPath(); g.moveTo(o, o + i * step); g.lineTo(o + (n - 1) * step, o + i * step); g.stroke();
+    }
+    const stars = n === 19 ? [3, 9, 15] : n === 13 ? [3, 6, 9] : [2, 4, 6];
+    g.fillStyle = 'rgba(30,18,6,0.95)';
+    const stars2 = n === 9 ? [[2, 2], [2, 6], [6, 2], [6, 6], [4, 4]] : stars.flatMap(a => stars.map(b => [a, b]));
+    for (const [a, b] of stars2) { g.beginPath(); g.arc(o + a * step, o + b * step, step * 0.1, 0, Math.PI * 2); g.fill(); }
+  });
+}
+
+// Biconvex stone profile (lens), UV mapped top-down so shell stripes run straight.
+function stoneGeometry(r, h) {
+  const pts = [];
+  const N = 18;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;                       // 0 bottom centre -> 1 top centre
+    const a = -Math.PI / 2 + t * Math.PI;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * h / 2 * (1 - 0.18 * Math.pow(Math.cos(a), 6)) + h / 2;
+    pts.push(new THREE.Vector2(Math.max(0.0001, x), y));
+  }
+  const g = new THREE.LatheGeometry(pts, 40);
+  const pos = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / (2 * r) + 0.5, pos.getZ(i) / (2 * r) + 0.5);
+  g.computeVertexNormals();
+  return g;
+}
+
+function bowlGeometry() {
+  const pts = [];
+  const prof = [[0, 0], [0.9, 0], [1.05, 0.08], [1.28, 0.35], [1.36, 0.7], [1.3, 1.02], [1.18, 1.18], [1.1, 1.22],
+    [1.06, 1.18], [1.14, 1.0], [1.18, 0.72], [1.1, 0.38], [0.86, 0.16], [0, 0.14]];
+  for (const [x, y] of prof) pts.push(new THREE.Vector2(x, y));
+  const g = new THREE.LatheGeometry(pts, 48); g.computeVertexNormals(); return g;
+}
+function lidGeometry() {
+  const prof = [[0, 0.16], [0.9, 0.12], [1.12, 0.03], [1.16, 0.0], [1.2, 0.02], [1.2, 0.08], [1.08, 0.2], [0.8, 0.28], [0, 0.3]];
+  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 48); g.computeVertexNormals(); return g;
+}
 
 export default function go(ctx) {
-  const holder = document.createElement('div'); holder.style.width = '100%';
-  const bar = document.createElement('div'); bar.className = 'row'; bar.style.marginTop = '10px';
-  ctx.root.appendChild(holder); ctx.root.appendChild(bar);
-  const log = document.createElement('div'); log.className = 'log';
+  const holder = el('div', 'stageWrap');
+  const bar = el('div', 'row controls');
+  ctx.root.append(holder, bar);
+  const log = el('div', 'log');
   ctx.extra.innerHTML = ''; ctx.extra.appendChild(log);
 
-  const stage = new Stage(holder, { radius: 12, minR: 7, maxR: 20, phi: 0.62, targetY: 0 });
+  const stage = new Stage(holder, { camera: { radius: 17, phi: 0.62, minR: 9, maxR: 28, target: [0, H, 0.6] } });
+  const S = stage.scene;
 
-  const EXT = 8;                              // playable span in world units
-  let n = 19, spacing = EXT / 18, sr = 0.2;   // set per game
-  const origin = -EXT / 2;
-  const toWorld = (r, c) => [origin + c * spacing, origin + r * spacing];
-  const nearest = (pt) => {
-    const c = Math.round((pt.x - origin) / spacing), r = Math.round((pt.z - origin) / spacing);
+  // ------------------------------------------------------------ goban
+  const side = woodTexture({ light: 0xe5bf78, dark: 0xc49250, rings: 16, seed: 42, figure: 0.4 });
+  const bodyMat = new THREE.MeshPhysicalMaterial({ map: side.map, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.35, envMapIntensity: 0.4 });
+  const body = new THREE.Mesh(new RoundedBoxGeometry(W, H, W, 5, 0.05), bodyMat);
+  body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true;
+  S.add(body);
+  const topMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3, envMapIntensity: 0.35 });
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.1, W - 0.1).rotateX(-Math.PI / 2), topMat);
+  top.position.y = H + 0.001; top.receiveShadow = true;
+  S.add(top);
+  const pickPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, W).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ visible: false }));
+  pickPlane.position.y = H + 0.01; pickPlane.userData.pick = { plane: true };
+  S.add(pickPlane);
+  stage.setPickables([pickPlane]);
+
+  // ------------------------------------------------------------ stones
+  const shell = shellTexture();
+  const matB = new THREE.MeshPhysicalMaterial({ color: 0x141416, roughness: 0.42, clearcoat: 0.55, clearcoatRoughness: 0.35, envMapIntensity: 0.55 });
+  const matW = new THREE.MeshPhysicalMaterial({ map: shell.map, roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.15, envMapIntensity: 0.6 });
+  const ghostB = matB.clone(); ghostB.transparent = true; ghostB.opacity = 0.45; ghostB.depthWrite = false;
+  const ghostW = matW.clone(); ghostW.transparent = true; ghostW.opacity = 0.55; ghostW.depthWrite = false;
+  const deadB = matB.clone(); deadB.transparent = true; deadB.opacity = 0.35;
+  const deadW = matW.clone(); deadW.transparent = true; deadW.opacity = 0.35;
+
+  let n = 19, step = EXT / 18, sr = step * 0.48, sh = sr * 0.52, stoneGeo = null;
+  const toWorld = (r, c, y = H) => new THREE.Vector3(-EXT / 2 + c * step, y, -EXT / 2 + r * step);
+  const nearest = pt => {
+    const c = Math.round((pt.x + EXT / 2) / step), r = Math.round((pt.z + EXT / 2) / step);
     if (r < 0 || c < 0 || r >= n || c >= n) return null;
     return { r, c };
   };
 
-  // Kaya-wood board.
-  const boardMat = new THREE.MeshStandardMaterial({ color: 0xd9b45a, roughness: 0.65 });
-  const board = new THREE.Mesh(new THREE.BoxGeometry(EXT + 1.6, 0.6, EXT + 1.6), boardMat);
-  board.position.y = -0.3; board.receiveShadow = true; stage.scene.add(board);
-  const gridGroup = new THREE.Group(); stage.scene.add(gridGroup);
-  const stonesGroup = new THREE.Group(); stage.scene.add(stonesGroup);
-  const overlay = new THREE.Group(); stage.scene.add(overlay);
-
-  const blackMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.25, metalness: 0.1 });
-  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f1ea, roughness: 0.4 });
-  const stoneGeo = new THREE.SphereGeometry(1, 24, 18);   // scaled per placement
-
-  function buildGrid() {
-    gridGroup.clear();
-    const mat = new THREE.LineBasicMaterial({ color: 0x5a3d12 });
-    const a0 = origin, a1 = origin + (n - 1) * spacing;
-    for (let i = 0; i < n; i++) {
-      const p = origin + i * spacing;
-      gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(p, 0.02, a0), new THREE.Vector3(p, 0.02, a1)]), mat));
-      gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a0, 0.02, p), new THREE.Vector3(a1, 0.02, p)]), mat));
-    }
-    const stars = n === 19 ? [3, 9, 15] : n === 13 ? [3, 6, 9] : n === 9 ? [2, 4, 6] : [];
-    const dotMat = new THREE.MeshStandardMaterial({ color: 0x3a2606 });
-    for (const a of stars) for (const b of stars) {
-      const [x, z] = toWorld(a, b);
-      const d = new THREE.Mesh(new THREE.CylinderGeometry(spacing * 0.09, spacing * 0.09, 0.03, 16), dotMat);
-      d.position.set(x, 0.03, z); gridGroup.add(d);
-    }
-    // One large invisible pick plane covering the board.
-    const plane = gridGroup.getObjectByName('pick') || new THREE.Mesh(
-      new THREE.PlaneGeometry(EXT + 1.2, EXT + 1.2).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ visible: false }));
-    plane.name = 'pick'; plane.position.y = 0.02; plane.userData.pick = { plane: true };
-    gridGroup.add(plane);
-    stage.setPickables([plane]);
-  }
-
-  function stone(color, r, c, opts = {}) {
-    const m = new THREE.Mesh(stoneGeo, color === 1 ? blackMat : whiteMat);
-    m.scale.set(sr, sr * 0.42, sr);
-    const [x, z] = toWorld(r, c); m.position.set(x, sr * 0.42, z);
+  const stones = new Map();                    // 'r,c' -> { mesh, v }
+  const stoneGroup = new THREE.Group(); S.add(stoneGroup);
+  function makeStone(v, mat) {
+    const m = new THREE.Mesh(stoneGeo, mat || (v === 1 ? matB : matW));
     m.castShadow = true; m.receiveShadow = true;
-    if (opts.ghost) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.45; m.castShadow = false; }
-    if (opts.dead) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.3; }
+    // tiny random twist + offset: real stones never sit perfectly on the point
+    m.rotation.y = Math.random() * Math.PI * 2;
     return m;
   }
 
-  let st = null, seat = -1, hover = null, ghost = null;
+  // ------------------------------------------------------------ bowls
+  const bowlWood = woodTexture({ light: 0xb07a45, dark: 0x6d4220, rings: 14, seed: 43, figure: 0.7 });
+  const bowlMat = new THREE.MeshPhysicalMaterial({ map: bowlWood.map, roughness: 0.4, clearcoat: 0.8, clearcoatRoughness: 0.15, envMapIntensity: 0.5 });
+  const bowlG = bowlGeometry(), lidG = lidGeometry();
+  const bowls = [], lids = [];
+  // seat 0 (black) sits at +z, bowl to their right; seat 1 (white) at -z.
+  const bowlPos = [new THREE.Vector3(W / 2 + 1.9, 0, W / 2 - 1.8), new THREE.Vector3(-W / 2 - 1.9, 0, -W / 2 + 1.8)];
+  const lidPos = [new THREE.Vector3(W / 2 + 1.9, 0, W / 2 - 4.7), new THREE.Vector3(-W / 2 - 1.9, 0, -W / 2 + 4.7)];
+  for (let i = 0; i < 2; i++) {
+    const b = new THREE.Mesh(bowlG, bowlMat); b.scale.setScalar(1.25); b.position.copy(bowlPos[i]);
+    b.castShadow = b.receiveShadow = true; S.add(b); bowls.push(b);
+    const l = new THREE.Mesh(lidG, bowlMat); l.scale.setScalar(1.25); l.position.copy(lidPos[i]);
+    l.rotation.x = Math.PI; l.position.y = 0.3 * 1.25;       // lid upside-down, used as capture tray
+    l.castShadow = l.receiveShadow = true; S.add(l); lids.push(l);
+  }
+  const bowlFill = [new THREE.Group(), new THREE.Group()];
+  const lidFill = [new THREE.Group(), new THREE.Group()];
+  bowlFill.forEach(g => S.add(g)); lidFill.forEach(g => S.add(g));
 
-  function sync() {
-    stonesGroup.clear(); overlay.clear();
-    const dead = new Set(st.dead || []);
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-      const v = st.board[r][c];
-      if (v) stonesGroup.add(stone(v, r, c, { dead: dead.has(r + ',' + c) }));
+  function fillBowls() {
+    for (let i = 0; i < 2; i++) {
+      bowlFill[i].clear();
+      const rnd = mulberry(7 + i);
+      for (let k = 0; k < 26; k++) {
+        const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * 1.12;
+        const m = makeStone(i === 0 ? 1 : 2);
+        m.position.set(bowlPos[i].x + Math.cos(a) * rr, 1.05 + rnd() * 0.12 - rr * 0.12, bowlPos[i].z + Math.sin(a) * rr);
+        m.rotation.set((rnd() - 0.5) * 0.5, rnd() * 6, (rnd() - 0.5) * 0.5);
+        m.castShadow = false;
+        bowlFill[i].add(m);
+      }
     }
-    if (st.lastMove && st.lastMove.r != null) {
-      const [x, z] = toWorld(st.lastMove.r, st.lastMove.c);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(sr * 0.5, sr * 0.08, 8, 24).rotateX(Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color: 0xff4d4d }));
-      ring.position.set(x, sr * 0.85, z); overlay.add(ring);
+  }
+  // Captured stones (the opponent's colour) lie in the lid.
+  const lidCount = [0, 0];
+  function fillLid(i, count) {
+    if (lidCount[i] === count) return;
+    lidCount[i] = count;
+    lidFill[i].clear();
+    const rnd = mulberry(99 + i);
+    const shown = Math.min(count, 60);
+    for (let k = 0; k < shown; k++) {
+      const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * 1.05;
+      const m = makeStone(i === 0 ? 2 : 1);
+      m.position.set(lidPos[i].x + Math.cos(a) * rr, 0.07 + Math.floor(k / 22) * sh * 0.8 + rnd() * 0.02, lidPos[i].z + Math.sin(a) * rr);
+      m.rotation.set((rnd() - 0.5) * 0.3, rnd() * 6, (rnd() - 0.5) * 0.3);
+      lidFill[i].add(m);
     }
-    drawStatus();
+  }
+
+  // ------------------------------------------------------------ markers
+  const marker = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.17, 28).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xff4d3d, toneMapped: false, depthWrite: false, transparent: true }));
+  marker.renderOrder = 5; marker.visible = false; S.add(marker);
+  const terrGroup = new THREE.Group(); S.add(terrGroup);
+  const terrB = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.6 });
+  const terrW = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.6 });
+  let ghost = null, hover = null;
+
+  let st = null, seat = -1, prevHist = -1;
+
+  function rebuildGeometry(size) {
+    n = size; step = EXT / (n - 1); sr = step * 0.485; sh = sr * 0.56;
+    stoneGeo = stoneGeometry(sr, sh);
+    topMat.map = gobanTop(n); topMat.needsUpdate = true;
+    for (const s of stones.values()) stoneGroup.remove(s.mesh);
+    stones.clear();
+    fillBowls(); lidCount[0] = lidCount[1] = -1;
+    stage.setView({ radius: n <= 9 ? 12.5 : n <= 13 ? 14 : 15.5 }, false);
+  }
+
+  function sync(state) {
+    const dead = new Set(state.dead || []);
+    const newHist = state.history.length;
+    const placed = state.lastMove && newHist === prevHist + 1 ? state.lastMove : null;
+    prevHist = newHist;
+    const want = new Map();
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (state.board[r][c]) want.set(r + ',' + c, state.board[r][c]);
+    // captured / removed stones fly to the capturer's lid
+    for (const [k, s] of stones) {
+      if (want.get(k) === s.v) continue;
+      stones.delete(k);
+      const m = s.mesh;
+      const to = lidPos[s.v === 1 ? 1 : 0].clone(); to.y = 0.2;
+      const from = m.position.clone();
+      stage.tween(520, t => { m.position.lerpVectors(from, to, t); m.position.y = from.y + Math.sin(Math.PI * t) * 2 + (to.y - from.y) * t; },
+        { delay: 180 + Math.random() * 160, ease: EASE.inOutCubic, done: () => stoneGroup.remove(m) });
+    }
+    for (const [k, v] of want) {
+      let s = stones.get(k);
+      const [r, c] = k.split(',').map(Number);
+      if (!s) {
+        const m = makeStone(v);
+        const p = toWorld(r, c);
+        p.x += (Math.random() - 0.5) * step * 0.05; p.z += (Math.random() - 0.5) * step * 0.05;
+        m.position.copy(p);
+        stoneGroup.add(m);
+        s = { mesh: m, v }; stones.set(k, s);
+        if (placed && placed.r === r && placed.c === c) {
+          stage.tween(260, t => { m.position.y = H + (1 - t) * 1.2; m.rotation.x = (1 - t) * 0.4; },
+            { ease: EASE.inOutCubic, done: () => { sfx.stone(); stage.tween(140, t => { m.position.y = H + Math.sin(Math.PI * t) * 0.04; }); } });
+        }
+      }
+      s.mesh.material = dead.has(k) ? (v === 1 ? deadB : deadW) : (v === 1 ? matB : matW);
+    }
+    fillLid(0, state.captures[0]); fillLid(1, state.captures[1]);
+
+    if (state.lastMove && state.lastMove.r != null && !state.over) {
+      marker.position.copy(toWorld(state.lastMove.r, state.lastMove.c, H + sh + 0.004));
+      marker.scale.setScalar(step / (EXT / 18));
+      marker.visible = true;
+    } else marker.visible = false;
+
+    terrGroup.clear();
+    if (state.phase === 'scoring' || (state.over && state.scoreInfo)) {
+      const terr = territory(state.board, n, dead);
+      const g = new THREE.BoxGeometry(step * 0.34, 0.03, step * 0.34);
+      for (const [r, c, owner] of terr) {
+        const m = new THREE.Mesh(g, owner === 1 ? terrB : terrW);
+        m.position.copy(toWorld(r, c, H + 0.02)); m.castShadow = true;
+        terrGroup.add(m);
+      }
+    }
   }
 
   stage.onHover = (pick, point) => {
-    if (!st || st.over || st.phase !== 'play' || st.turn !== seat || !point) { setGhost(null); return; }
-    const g = nearest(point);
-    if (g && st.board[g.r][g.c] === 0) setGhost(g); else setGhost(null);
-  };
-  function setGhost(g) {
-    if ((g && hover && g.r === hover.r && g.c === hover.c) || (!g && !hover)) return;
+    let g = null;
+    if (st && !st.over && st.phase === 'play' && st.turn === seat && point) {
+      g = nearest(point);
+      if (g && st.board[g.r][g.c] !== 0) g = null;
+    }
+    if (g && hover && g.r === hover.r && g.c === hover.c) return;
     hover = g;
-    if (ghost) { stage.scene.remove(ghost); ghost = null; }
-    if (g) { ghost = stone(seat === 0 ? 1 : 2, g.r, g.c, { ghost: true }); stage.scene.add(ghost); }
-  }
-
+    if (ghost) { S.remove(ghost); ghost = null; }
+    if (g) { ghost = makeStone(seat === 0 ? 1 : 2, seat === 0 ? ghostB : ghostW); ghost.castShadow = false; ghost.position.copy(toWorld(g.r, g.c)); S.add(ghost); }
+  };
   stage.onPick = (pick, point) => {
     if (!st || st.over || !point) return;
+    stage.finishTweens();
     const g = nearest(point); if (!g) return;
     if (st.phase === 'scoring') ctx.send({ type: 'toggle-dead', r: g.r, c: g.c });
-    else if (st.turn === seat) { ctx.send({ type: 'place', r: g.r, c: g.c }); setGhost(null); }
+    else if (st.turn === seat) { ctx.send({ type: 'place', r: g.r, c: g.c }); stage.onHover(null, null); }
   };
 
-  const passB = mkBtn('패스', 'primary', () => ctx.send({ type: 'pass' }));
-  const acceptB = mkBtn('계가 동의', 'primary', () => ctx.send({ type: 'accept-score' }));
-  const resumeB = mkBtn('대국 재개', 'ghost', () => ctx.send({ type: 'resume' }));
-  const resign = mkBtn('기권', 'ghost', () => { if (confirm('정말 기권하시겠습니까?')) ctx.send({ type: 'resign' }); });
-  bar.append(passB, acceptB, resumeB, resign);
-  function mkBtn(t, cls, fn) { const b = document.createElement('button'); b.textContent = t; b.className = cls; b.onclick = fn; return b; }
+  // ------------------------------------------------------------ controls
+  const passB = btn('패스', 'primary', () => ctx.send({ type: 'pass' }));
+  const acceptB = btn('계가 동의', 'primary', () => ctx.send({ type: 'accept-score' }));
+  const resumeB = btn('대국 재개', 'ghost', () => ctx.send({ type: 'resume' }));
+  const resign = btn('기권', 'ghost', () => { if (confirm('정말 기권하시겠습니까?')) ctx.send({ type: 'resign' }); });
+  const topB = btn('⬒ 위에서 보기', 'ghost', () => stage.setView(stage.view.phi > 0.3 ? { phi: 0.12 } : { phi: 0.62 }));
+  bar.append(passB, acceptB, resumeB, resign, topB);
 
-  function drawStatus() {
+  function status() {
     const my = seat === 0 ? '흑' : seat === 1 ? '백' : '관전';
     let s;
     if (st.over) s = `<b>게임 종료</b><br>${st.result}`;
@@ -118,28 +276,56 @@ export default function go(ctx) {
       const si = st.scoreInfo || { black: 0, white: 0 };
       s = `<b>계가 중</b> — 죽은 돌을 클릭해 표시<br>흑 ${si.black} : 백 ${si.white} (덤 ${st.komi})<br>
         <span class="muted">동의: ${st.scoreAccept.map((a, i) => (i === 0 ? '흑' : '백') + (a ? '✅' : '⬜')).join(' ')}</span>`;
-    } else s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>따냄 — 흑 ${st.captures[0]} / 백 ${st.captures[1]}<br>덤 ${st.komi} · <span class="muted">드래그 회전</span>`;
+    } else s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>따낸 돌 — 흑 ${st.captures[0]} / 백 ${st.captures[1]}<br>
+      <span class="muted">덤 ${st.komi} · 드래그 회전 · 휠 확대</span>`;
     ctx.status.innerHTML = s;
     passB.classList.toggle('hidden', st.phase !== 'play'); passB.disabled = st.over || st.turn !== seat;
     acceptB.classList.toggle('hidden', st.phase !== 'scoring' || st.over); acceptB.disabled = seat < 0 || (st.scoreAccept && st.scoreAccept[seat]);
     resumeB.classList.toggle('hidden', st.phase !== 'scoring' || st.over);
     resign.disabled = st.over || seat < 0;
-    log.innerHTML = '';
-    (st.history || []).slice(-60).forEach(h => log.appendChild(Object.assign(document.createElement('div'), { textContent: h })));
-    log.scrollTop = log.scrollHeight;
+    fillLog(log, (st.history || []).slice(-80).map((h, i, a) => `${st.history.length - a.length + i + 1}. ${h}`));
   }
 
   let built = null, orientedFor = null;
+  ctx.root.__test = { screen: k => { const [r, c] = k.split(':')[1].split(',').map(Number); return stage.screenOf(toWorld(r, c)); } };
   return {
     render(state, mySeat) {
       st = state; seat = mySeat;
-      if (built !== st.n) {
-        n = st.n; spacing = EXT / (n - 1); sr = spacing * 0.47; built = n; buildGrid();
-        stage.radius = n <= 9 ? 10 : n <= 13 ? 12 : 14;
-      }
-      if (orientedFor !== seat) { stage.theta = seat === 1 ? Math.PI : 0; orientedFor = seat; }
-      sync();
+      if (built !== st.n) { built = st.n; rebuildGeometry(st.n); }
+      if (orientedFor !== seat) { stage.setView({ theta: seat === 1 ? Math.PI : 0 }, false); orientedFor = seat; }
+      sync(state);
+      status();
     },
-    destroy() { stage.destroy(); ctx.root.innerHTML = ''; ctx.extra.innerHTML = ''; }
+    destroy() { stage.destroy(); ctx.root.innerHTML = ''; ctx.extra.innerHTML = ''; delete ctx.root.__test; }
   };
+}
+
+// Same flood fill as the server's area scoring, used to draw territory markers.
+function territory(board, n, dead) {
+  const b = board.map(r => r.slice());
+  for (const k of dead) { const [r, c] = k.split(',').map(Number); b[r][c] = 0; }
+  const seen = Array.from({ length: n }, () => new Array(n).fill(false));
+  const out = [];
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (b[r][c] || seen[r][c]) continue;
+    const region = [], borders = new Set(), stack = [[r, c]];
+    seen[r][c] = true;
+    while (stack.length) {
+      const [cr, cc] = stack.pop(); region.push([cr, cc]);
+      for (const [dr, dc] of NB) {
+        const rr = cr + dr, c2 = cc + dc;
+        if (rr < 0 || c2 < 0 || rr >= n || c2 >= n) continue;
+        if (b[rr][c2] === 0) { if (!seen[rr][c2]) { seen[rr][c2] = true; stack.push([rr, c2]); } }
+        else borders.add(b[rr][c2]);
+      }
+    }
+    if (borders.size === 1) { const o = [...borders][0]; for (const [x, y] of region) out.push([x, y, o]); }
+  }
+  // dead stones count as the opponent's territory too
+  for (const k of dead) { const [r, c] = k.split(',').map(Number); out.push([r, c, board[r][c] === 1 ? 2 : 1]); }
+  return out;
+}
+
+function mulberry(a) {
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }

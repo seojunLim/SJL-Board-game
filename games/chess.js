@@ -319,7 +319,8 @@ module.exports = {
       })) : [],
       halfmove: state.halfmove,
       fullmove: state.fullmove,
-      lastMove: state.lastMove || null
+      lastMove: state.lastMove || null,
+      drawOffer: state.drawOffer ?? null
     };
   },
 

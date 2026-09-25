@@ -106,7 +106,8 @@ module.exports = {
       needUno: seat >= 0 && state.hands[seat] && state.hands[seat].length === 1 && !state.uno[seat],
       deckLeft: state.deck.length,
       over: state.over, winner: state.winner, result: state.result, log: state.log.slice(-40),
-      lastPlay: state.lastPlay
+      lastPlay: state.lastPlay,
+      playSeq: state.playSeq || 0
     };
   },
 
@@ -164,6 +165,7 @@ module.exports = {
       const played = { color: (card.kind === 'wild' || card.kind === 'wd4') ? 'w' : card.color, kind: card.kind, value: card.value };
       state.discard.push(played);
       state.lastPlay = { seat, card: played };
+      state.playSeq = (state.playSeq || 0) + 1;
       state.uno[seat] = false;
       state.color = (card.kind === 'wild' || card.kind === 'wd4') ? action.chosenColor : card.color;
       state.phase = 'play'; state.drawnIndex = -1;

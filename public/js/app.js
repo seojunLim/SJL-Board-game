@@ -1,4 +1,5 @@
 import { renderers } from './games/index.js';
+import { isMuted, setMuted } from './three3d/sound.js';
 
 const socket = io();
 const $ = s => document.querySelector(s);
@@ -173,6 +174,9 @@ socket.on('game:over', ({ result }) => {
   toast(result || '게임 종료');
 });
 $('#rematchBtn').onclick = () => socket.emit('room:rematch');
+const syncMute = () => { $('#muteBtn').textContent = isMuted() ? '🔇' : '🔊'; };
+$('#muteBtn').onclick = () => { setMuted(!isMuted()); syncMute(); };
+syncMute();
 socket.on('room:rematch-votes', ({ votes, need }) => {
   $('#rematchBtn').textContent = `한 판 더 (${votes}/${need})`;
 });
