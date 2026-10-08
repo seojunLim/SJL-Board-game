@@ -3,7 +3,7 @@
 // are driven by clicking the projected screen position of a square/tile (each
 // renderer exposes `#board.__test.screen(key)`), so raycast picking is covered.
 const assert = require('assert');
-const { chromium } = require('playwright');
+const { chromium, devices } = require('playwright');
 const { server } = require('../server');
 
 const POLL = { polling: 100, timeout: 15000 };
@@ -22,7 +22,7 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
 
   async function newPage(name) {
     const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
-    await ctx.addInitScript(n => localStorage.setItem('sjl-name', n), name);
+    await ctx.addInitScript(n => { localStorage.setItem('sjl-name', n); localStorage.setItem('sjl-rules-seen', 'all'); localStorage.setItem('sjl-mute', '1'); }, name);
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push(`${name}: ${e.message}`));
     page.on('console', m => { if (m.type() === 'error') errors.push(`${name} console: ${m.text()}`); });
@@ -41,8 +41,8 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   }
   async function start(gameId, host, guest) {
     await host.bringToFront();
-    await host.locator('.gcard').filter({ hasText: LABEL[gameId] }).first().click();
-    if (gameId === 'go') await host.selectOption('#optSize', '9');
+    await host.locator('.gameCard').filter({ hasText: LABEL[gameId] }).first().click();
+    if (gameId === 'go') await host.check('input[name=sz][value="9"]');
     await host.click('#createBtn');
     await host.waitForSelector('#room:not(.hidden)');
     const code = (await host.textContent('#roomCode')).trim();
@@ -61,7 +61,12 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
     return code;
   }
   async function leave(host, guest) {
-    for (const p of [host, guest]) { await p.bringToFront(); await p.click('#leaveBtn'); await p.waitForSelector('#lobby:not(.hidden)'); }
+    for (const p of [host, guest]) {
+      await p.bringToFront();
+      // a finished game shows the result card, which has its own leave button
+      if (await p.locator('#winLeave').count()) await p.click('#winLeave'); else await p.click('#leaveBtn');
+      await p.waitForSelector('#lobby:not(.hidden)');
+    }
   }
 
   const host = await newPage('호스트');
@@ -137,6 +142,46 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   }
   console.log(`  ✓ uno (${code}): hand of ${handBefore} rendered as 3D cards, draw works`);
   await leave(host, guest);
+
+
+  // ---- a visitor's phone: open the invite link, tap to play, survive a reload
+  {
+    const pctx = await browser.newContext({ ...devices['iPhone 13'] });
+    await pctx.addInitScript(() => { localStorage.setItem('sjl-name', '폰손님'); localStorage.setItem('sjl-rules-seen', 'all'); localStorage.setItem('sjl-mute', '1'); });
+    const phone = await pctx.newPage();
+    phone.on('pageerror', e => errors.push(`phone: ${e.message}`));
+    await host.bringToFront();
+    await host.locator('.gameCard').filter({ hasText: '체스' }).first().click();
+    await host.click('#createBtn');
+    await host.waitForSelector('#room:not(.hidden)');
+    const pc = (await host.textContent('#roomCode')).trim();
+    const qrOk = await host.evaluate(() => !!document.querySelector('.waiting .qr svg'));
+    assert.ok(qrOk, 'waiting room shows a QR code');
+    await phone.goto(url + '/?room=' + pc);                        // what the QR code opens
+    await phone.waitForSelector('#room:not(.hidden)');
+    await host.click('#readyBtn');
+    await phone.click('#readyBtn');
+    await phone.waitForSelector('#board canvas.stage3d', { state: 'attached', timeout: 90000 });
+    await click3d(host, 'sq:6,4'); await click3d(host, 'sq:4,4');
+    await phone.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('e4'), null, POLL);
+    const tap = async key => {
+      await phone.bringToFront(); await phone.waitForTimeout(80);
+      const pt = await phone.evaluate(k => document.querySelector('#board').__test.screen(k), key);
+      await phone.touchscreen.tap(pt.x, pt.y); await phone.waitForTimeout(300);
+    };
+    await tap('sq:1,4'); await tap('sq:3,4');
+    await host.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('e5'), null, POLL);
+    console.log(`  ✓ phone (${pc}): joined from the invite link and played e5 by touch`);
+    await phone.reload();                                            // screen lock / refresh
+    await phone.waitForSelector('#board canvas.stage3d', { state: 'attached', timeout: 90000 });
+    await phone.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('e5'), null, POLL);
+    const seatOk = await phone.evaluate(() => document.querySelector('#status').innerText.includes('나: 흑'));
+    assert.ok(seatOk, 'phone is back in its own seat after reload');
+    console.log('  ✓ phone reloaded and was put straight back into its seat');
+    await phone.click('#leaveBtn');
+    await host.bringToFront(); await host.click('#leaveBtn'); await host.waitForSelector('#lobby:not(.hidden)');
+    await pctx.close();
+  }
 
   await browser.close();
   server.close();

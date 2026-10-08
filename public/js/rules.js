@@ -1,0 +1,151 @@
+// Rule sheets shown to first-time players (booth visitors), one per game.
+// Each: tagline, players, time, goal, sections [{ h, items }], controls.
+
+export const RULES = {
+  chess: {
+    emoji: '♞', tagline: '왕을 잡는 두뇌 전쟁', players: '2인', time: '10~30분',
+    goal: '상대의 킹을 꼼짝 못 하게 만들면(체크메이트) 이깁니다.',
+    sections: [
+      { h: '기물 움직이기', items: [
+        '<b>킹</b>: 모든 방향으로 한 칸',
+        '<b>퀸</b>: 가로·세로·대각선으로 원하는 만큼',
+        '<b>룩</b>: 가로·세로로 원하는 만큼',
+        '<b>비숍</b>: 대각선으로 원하는 만큼',
+        '<b>나이트</b>: L자(2칸+1칸)로, 다른 기물을 뛰어넘을 수 있음',
+        '<b>폰</b>: 앞으로 한 칸(처음엔 두 칸), 잡을 때는 대각선 앞으로'
+      ] },
+      { h: '알아두면 좋은 규칙', items: [
+        '<b>체크</b>: 킹이 공격받는 상태. 반드시 피해야 해요.',
+        '<b>캐슬링</b>: 킹과 룩을 한 번에 움직이는 특수한 수 (킹을 두 칸 옆으로 움직이면 돼요)',
+        '<b>승격</b>: 폰이 끝까지 가면 퀸 등으로 바뀝니다.',
+        '움직일 수 없는데 체크도 아니면 <b>무승부</b>(스테일메이트)'
+      ] }
+    ],
+    controls: ['내 기물을 누르면 갈 수 있는 칸이 초록 점으로 보여요.', '초록 점(빨간 고리는 잡기)을 누르면 이동!', '백(흰색)이 먼저 둡니다.']
+  },
+  go: {
+    emoji: '⚫', tagline: '땅을 더 많이 차지하는 게임', players: '2인', time: '9줄 10분 · 19줄 1시간+',
+    goal: '돌로 둘러싼 집(빈 땅)과 내 돌을 합쳐 더 넓게 차지한 사람이 이깁니다.',
+    sections: [
+      { h: '진행', items: [
+        '흑부터 번갈아 선이 만나는 점에 돌을 하나씩 놓습니다.',
+        '상대 돌을 사방(위·아래·왼쪽·오른쪽)에서 완전히 둘러싸면 <b>따내서</b> 가져옵니다.',
+        '스스로 갇히는 자리(자살수)에는 둘 수 없어요.',
+        '<b>패</b>: 방금 따낸 모양을 바로 되따내는 수는 금지 (판이 똑같이 반복되면 안 됨)'
+      ] },
+      { h: '끝내기', items: [
+        '둘 다 <b>패스</b>하면 끝! 죽은 돌을 눌러 표시하고 둘 다 <b>계가 동의</b>를 누르면 점수가 나옵니다.',
+        '백은 나중에 두는 대신 <b>덤 6.5집</b>을 받아요.'
+      ] }
+    ],
+    controls: ['처음이라면 방 만들 때 <b>9줄</b>을 추천해요.', '폰에서는 한 번 누르면 미리보기, 같은 곳을 한 번 더 누르면 착수!']
+  },
+  othello: {
+    emoji: '⚪', tagline: '뒤집고 또 뒤집는 역전의 게임', players: '2인', time: '10~15분',
+    goal: '게임이 끝났을 때 내 색 돌이 더 많으면 이깁니다.',
+    sections: [
+      { h: '진행', items: [
+        '흑부터 번갈아 돌을 놓습니다.',
+        '놓은 돌과 내 다른 돌 사이에 <b>상대 돌을 끼우면</b>, 끼인 돌이 전부 내 색으로 뒤집혀요. (가로·세로·대각선 모두)',
+        '<b>반드시 하나 이상 뒤집을 수 있는 칸</b>에만 둘 수 있어요.',
+        '둘 곳이 없으면 패스, 둘 다 둘 곳이 없으면 끝!'
+      ] },
+      { h: '꿀팁', items: ['모서리(구석)를 차지하면 절대 뒤집히지 않아 유리해요.'] }
+    ],
+    controls: ['빛나는 칸이 둘 수 있는 곳이에요. 누르면 놓입니다.']
+  },
+  davinci: {
+    emoji: '🔢', tagline: '상대의 숫자를 추리하라', players: '2~4인', time: '15~20분',
+    goal: '상대의 숨겨진 타일 숫자를 모두 맞혀 공개시키면 이깁니다. 마지막까지 숨긴 타일이 남은 사람이 승리!',
+    sections: [
+      { h: '준비', items: [
+        '검정·흰색 타일(0~11, 조커 –)을 나눠 받고, 왼쪽부터 <b>작은 숫자 순서</b>로 세워 둡니다.',
+        '숫자가 같으면 <b>검정이 왼쪽</b>. 조커(–)는 아무 곳에나 둘 수 있어요.'
+      ] },
+      { h: '내 차례', items: [
+        '① 가운데에서 타일을 한 장 가져옵니다 (검정·흰색 중 고를 수 있어요).',
+        '② 상대 타일 하나를 골라 숫자를 맞혀요.',
+        '<b>맞히면</b>: 그 타일이 공개되고, 계속 맞힐지 멈출지 고를 수 있어요.',
+        '<b>틀리면</b>: 방금 가져온 내 타일이 모두에게 공개되고 차례가 끝납니다.'
+      ] },
+      { h: '추리 꿀팁', items: ['타일은 정렬되어 있으니 양옆 숫자로 범위를 좁혀 보세요!'] }
+    ],
+    controls: ['아래 버튼으로 뽑을 색을 골라요.', '상대 타일을 누르고 → 숫자 버튼을 누르면 추측!']
+  },
+  louie: {
+    emoji: '✈️', tagline: '비행기를 튕겨 내 닭을 지켜라', players: '2~4인', time: '3~5분',
+    goal: '루이의 비행기가 닭을 떨어뜨립니다. 마지막까지 닭이 남은 사람이 이겨요.',
+    sections: [
+      { h: '진행', items: [
+        '비행기가 판 위를 빙글빙글 돕니다. 점점 빨라져요!',
+        '비행기가 <b>내 헛간 앞</b>에 왔을 때 레버를 치면 비행기를 튕겨 보낼 수 있어요.',
+        '못 막으면 내 닭(동전)이 한 마리 떨어집니다. 3마리를 다 잃으면 탈락!',
+        '너무 일찍 치면 잠깐 재장전이 걸려서 무방비가 돼요. <b>타이밍</b>이 핵심!'
+      ] }
+    ],
+    controls: ['아래 주황색 <b>레버 치기</b> 버튼, 키보드 <b>Space</b>, 또는 내 헛간을 눌러요.']
+  },
+  halligalli: {
+    emoji: '🔔', tagline: '과일 5개! 누가 먼저 종을 칠까', players: '2~6인', time: '5~15분',
+    goal: '카드를 모두 차지하면 승리! 카드가 떨어진 사람은 탈락해요.',
+    sections: [
+      { h: '진행', items: [
+        '순서대로 내 카드 더미에서 한 장씩 뒤집어 앞에 놓습니다.',
+        '펼쳐진 카드들 중 <b>같은 과일이 정확히 5개</b>가 되면 종을 쳐요! (예: 바나나 2개 + 바나나 3개)',
+        '<b>가장 먼저</b> 종을 친 사람이 펼쳐진 카드를 전부 가져갑니다.',
+        '틀리게 치면 다른 사람 모두에게 카드를 한 장씩 줘야 해요.'
+      ] },
+      { h: '과일', items: ['🍌 바나나 · 🍓 딸기 · 🍋 라임 · 🫐 자두 — 맨 위 카드만 세어요!'] }
+    ],
+    controls: ['<b>카드 뒤집기</b> 버튼(또는 F 키, 내 덱 누르기)', '<b>종 치기</b> 버튼(또는 Space, 가운데 종 누르기)']
+  },
+  uno: {
+    emoji: '🃏', tagline: '마지막 한 장, 우노!', players: '2~6인', time: '10~20분',
+    goal: '손에 든 카드를 가장 먼저 다 내는 사람이 이깁니다.',
+    sections: [
+      { h: '카드 내기', items: [
+        '버린 더미 맨 위 카드와 <b>색깔</b>이나 <b>숫자(기호)</b>가 같은 카드를 낼 수 있어요.',
+        '낼 카드가 없으면 한 장 뽑아요. 뽑은 카드가 맞으면 바로 낼 수도 있어요.'
+      ] },
+      { h: '특수 카드', items: [
+        '<b>⊘ 스킵</b>: 다음 사람 차례를 건너뜀',
+        '<b>⇄ 리버스</b>: 순서 방향을 바꿈 (2명이면 스킵과 같음)',
+        '<b>+2</b>: 다음 사람이 2장 받고 차례를 쉼',
+        '<b>와일드</b>: 원하는 색으로 바꿈 · <b>와일드 +4</b>: 색을 바꾸고 다음 사람이 4장!'
+      ] },
+      { h: '우노!', items: ['카드가 1장 남으면 <b>UNO!</b> 버튼을 꼭 누르세요. 안 누르면 다른 사람이 <b>잡기</b>로 2장 벌칙을 줄 수 있어요.'] }
+    ],
+    controls: ['낼 수 있는 카드는 위로 떠올라요. 누르면 냅니다.', '가운데 덱이나 <b>카드 뽑기</b> 버튼으로 뽑아요.']
+  }
+};
+
+const seenKey = 'sjl-rules-seen';
+function seen() { try { return localStorage.getItem(seenKey) || ''; } catch { return ''; } }
+export function rulesSeen(id) { const s = seen(); return s === 'all' || s.split(',').includes(id); }
+function markSeen(id) { try { const s = seen(); if (s !== 'all' && !rulesSeen(id)) localStorage.setItem(seenKey, (s ? s + ',' : '') + id); } catch {} }
+
+export function showRules(id, name) {
+  const r = RULES[id];
+  if (!r) return;
+  document.querySelector('.rulesModal')?.remove();
+  const m = document.createElement('div');
+  m.className = 'rulesModal';
+  m.innerHTML = `
+    <div class="sheet" role="dialog" aria-label="${name} 규칙">
+      <div class="sheetHead">
+        <span class="big">${r.emoji}</span>
+        <div><h2>${name}</h2><div class="tag">${r.tagline}</div></div>
+        <button class="closeX closeRules" aria-label="닫기">✕</button>
+      </div>
+      <div class="facts"><span>👥 ${r.players}</span><span>⏱ ${r.time}</span></div>
+      <div class="goal">🏆 ${r.goal}</div>
+      ${r.sections.map(s => `<h3>${s.h}</h3><ul>${s.items.map(i => `<li>${i}</li>`).join('')}</ul>`).join('')}
+      <h3>🎮 이 사이트에서 조작하기</h3>
+      <ul class="ctl">${r.controls.map(i => `<li>${i}</li>`).join('')}</ul>
+      <ul class="ctl"><li>화면을 드래그하면 판이 돌아가고, 두 손가락(휠)으로 확대할 수 있어요.</li></ul>
+      <button class="primary big closeRules">알겠어요!</button>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m || e.target.closest('.closeRules')) { m.remove(); } });
+  document.body.appendChild(m);
+  markSeen(id);
+}

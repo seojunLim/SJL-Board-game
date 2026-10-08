@@ -1,5 +1,6 @@
 'use strict';
 const path = require('path');
+const os = require('os');
 const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
@@ -18,6 +19,15 @@ app.use((req, res, next) => {
 app.get('/robots.txt', (_req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
 app.get('/api/games', (_req, res) => res.json(games.meta));
 app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
+// LAN addresses, so a laptop running the server offline can show a QR code
+// that phones on the same Wi-Fi/hotspot can open.
+app.get('/api/info', (_req, res) => {
+  const lan = [];
+  for (const list of Object.values(os.networkInterfaces())) for (const a of list || []) {
+    if (a.family === 'IPv4' && !a.internal) lan.push(`http://${a.address}:${PORT}`);
+  }
+  res.json({ lan });
+});
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 // ---------------------------------------------------------------- room model
@@ -31,6 +41,10 @@ function newCode() {
   while (rooms.has(code));
   return code;
 }
+
+const EMPTY_ROOM_GRACE_MS = 10 * 60_000;   // keep a started game this long with nobody connected
+
+function sanitizePid(p) { return typeof p === 'string' && /^[A-Za-z0-9_-]{6,40}$/.test(p) ? p : null; }
 
 function sanitizeName(n) {
   const s = String(n || '').trim().slice(0, 16).replace(/[\u0000-\u001f<>]/g, '');
@@ -52,10 +66,10 @@ function createRoom(gameId, hostName, opts) {
   return room;
 }
 
-function roomInfo(room) {
+function roomInfo(room, forSocket) {
   return {
     code: room.code, gameId: room.gameId, gameName: room.game.name,
-    players: room.players.map(p => ({ name: p.name, seat: p.seat, connected: p.connected, ready: p.ready })),
+    players: room.players.map(p => ({ name: p.name, seat: p.seat, connected: p.connected, ready: p.ready, mine: !!forSocket && p.id === forSocket })),
     spectators: room.spectators.length,
     started: room.started, max: room.game.maxPlayers, min: room.game.minPlayers,
     options: room.options
@@ -72,8 +86,10 @@ function lobbyList() {
 
 function broadcastLobby() { io.to('lobby').emit('lobby:rooms', lobbyList()); }
 
+// Each member gets the room with their own seat marked (`mine`).
 function pushRoom(room) {
-  io.to(room.code).emit('room:info', roomInfo(room));
+  for (const p of room.players) if (p.connected) io.to(p.id).emit('room:info', roomInfo(room, p.id));
+  for (const s of room.spectators) io.to(s.id).emit('room:info', roomInfo(room, s.id));
 }
 
 function pushState(room) {
@@ -124,33 +140,42 @@ function leaveRoom(socket) {
   }
   room.spectators = room.spectators.filter(x => x.id !== socket.id);
   const anyone = room.players.some(x => x.connected) || room.spectators.length > 0;
-  if (!anyone) destroyRoom(room);
-  else { pushRoom(room); broadcastLobby(); }
+  // A game in progress survives everyone dropping out briefly (phones locking,
+  // flaky school Wi-Fi); the sweeper removes it after the grace period.
+  if (!anyone && !room.started) destroyRoom(room);
+  else {
+    if (!anyone) room.emptySince = Date.now();
+    pushRoom(room); broadcastLobby();
+  }
 }
 
 io.on('connection', (socket) => {
-  sockets.set(socket.id, { name: '손님', roomCode: null });
+  sockets.set(socket.id, { name: '손님', roomCode: null, pid: null });
 
-  socket.on('lobby:join', (name) => {
+  socket.on('lobby:join', (arg) => {
     const meta = sockets.get(socket.id);
-    meta.name = sanitizeName(name);
+    const o = arg && typeof arg === 'object' ? arg : { name: arg };
+    meta.name = sanitizeName(o.name);
+    meta.pid = sanitizePid(o.pid) || meta.pid;
     socket.join('lobby');
     socket.emit('lobby:games', games.meta);
     socket.emit('lobby:rooms', lobbyList());
     socket.emit('me', { name: meta.name, id: socket.id });
   });
 
-  socket.on('room:create', ({ gameId, name, options }, cb) => {
+  socket.on('room:create', ({ gameId, name, options, pid } = {}, cb) => {
     const meta = sockets.get(socket.id);
     meta.name = sanitizeName(name || meta.name);
+    meta.pid = sanitizePid(pid) || meta.pid;
     const room = createRoom(gameId, meta.name, options);
     if (!room) return cb && cb({ error: '없는 게임입니다.' });
     doJoin(socket, room, cb);
   });
 
-  socket.on('room:join', ({ code, name, spectate }, cb) => {
+  socket.on('room:join', ({ code, name, spectate, pid } = {}, cb) => {
     const meta = sockets.get(socket.id);
     meta.name = sanitizeName(name || meta.name);
+    meta.pid = sanitizePid(pid) || meta.pid;
     const room = rooms.get(String(code || '').toUpperCase());
     if (!room) return cb && cb({ error: '방을 찾을 수 없습니다.' });
     doJoin(socket, room, cb, spectate);
@@ -163,15 +188,25 @@ io.on('connection', (socket) => {
     socket.join(room.code);
     meta.roomCode = room.code;
 
-    // reconnect into a seat previously held by the same name
-    const ghost = room.players.find(p => !p.connected && p.name === meta.name);
-    if (ghost) { ghost.id = socket.id; ghost.connected = true; }
+    // Reclaim a seat held by this device (pid), even if the old socket has not
+    // timed out yet; fall back to the name for clients without a pid.
+    const ghost = meta.pid
+      ? room.players.find(p => p.pid === meta.pid)
+      : room.players.find(p => !p.connected && !p.pid && p.name === meta.name);
+    if (ghost) {
+      if (ghost.connected && ghost.id !== socket.id) {
+        const old = io.sockets.sockets.get(ghost.id);
+        if (old) { const om = sockets.get(old.id); if (om) om.roomCode = null; old.leave(room.code); }
+      }
+      ghost.id = socket.id; ghost.connected = true; ghost.name = meta.name;
+      room.emptySince = null;
+    }
     else if (!spectate && !room.started && room.players.length < room.game.maxPlayers) {
-      room.players.push({ id: socket.id, name: meta.name, seat: room.players.length, connected: true, ready: false });
+      room.players.push({ id: socket.id, pid: meta.pid, name: meta.name, seat: room.players.length, connected: true, ready: false });
     } else {
       room.spectators.push({ id: socket.id, name: meta.name });
     }
-    cb && cb({ ok: true, room: roomInfo(room) });
+    cb && cb({ ok: true, room: roomInfo(room, socket.id) });
     socket.emit('room:chat-history', room.chat.slice(-50));
     pushRoom(room);
     if (room.started) pushState(room);
@@ -254,7 +289,8 @@ setInterval(() => {
   const now = Date.now();
   for (const room of [...rooms.values()]) {
     const live = room.players.some(p => p.connected) || room.spectators.length;
-    if (!live && now - room.createdAt > 60_000) destroyRoom(room);
+    if (live) continue;
+    if (room.started ? now - (room.emptySince || now) > EMPTY_ROOM_GRACE_MS : now - room.createdAt > 60_000) destroyRoom(room);
   }
 }, 60_000);
 

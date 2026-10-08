@@ -24,6 +24,8 @@ export const EASE = {
 };
 
 const BG = 0x0d0b0a;
+// Phones/tablets: fewer pixels and a smaller shadow map keep 60fps and battery.
+export const MOBILE = typeof matchMedia === 'function' && (matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700);
 
 export class Stage {
   constructor(mount, opts = {}) {
@@ -36,7 +38,7 @@ export class Stage {
     this._tweens = [];
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(Math.min(MOBILE ? 1.6 : 2, window.devicePixelRatio || 1));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -89,7 +91,7 @@ export class Stage {
     lamp.position.set(2.5, 17, 5.5);
     lamp.target.position.set(0, 0, 0);
     lamp.castShadow = true;
-    lamp.shadow.mapSize.set(2048, 2048);
+    lamp.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
     lamp.shadow.bias = -0.00015;
     lamp.shadow.normalBias = 0.02;
     lamp.shadow.camera.near = 6; lamp.shadow.camera.far = 36;
@@ -248,7 +250,7 @@ export class Stage {
       el.style.cursor = 'grab';
       if (downOnCanvas && moved <= 6 && pointers.size === 0 && this.onPick) {
         const h = this._hit(e);
-        this.onPick(h ? h.pick : null, h ? h.point : null, h ? h.obj : null);
+        this.onPick(h ? h.pick : null, h ? h.point : null, h ? h.obj : null, e.pointerType || 'mouse');
       }
       if (pointers.size === 0) downOnCanvas = false;
     };
@@ -268,7 +270,8 @@ export class Stage {
 
   _resize() {
     const w = Math.max(280, this.mount.clientWidth || 600);
-    const ratio = this.opts.aspect || 0.78;
+    // portrait phones get a taller canvas so the table fills the screen
+    const ratio = w < 600 ? Math.max(1.12, this.opts.aspect || 0.78) : (this.opts.aspect || 0.78);
     const h = Math.round(clamp(w * ratio, 340, Math.max(360, window.innerHeight * 0.76)));
     if (w === this._w && h === this._h) return;
     this._w = w; this._h = h;
@@ -316,15 +319,19 @@ export class Stage {
     window.removeEventListener('pointercancel', this._up);
     el.removeEventListener('pointerleave', this._leave);
     el.removeEventListener('wheel', this._wheel);
-    this.scene.traverse(o => {
-      o.geometry?.dispose?.();
-      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
-    });
-    this._env.dispose();
-    this._pmrem.dispose();
-    this.renderer.dispose();
-    this.renderer.forceContextLoss();
+    // Detach the canvas right away so leaving feels instant; free GPU
+    // resources afterwards (context teardown can take a while on slow GPUs).
     el.remove();
+    setTimeout(() => {
+      this.scene.traverse(o => {
+        o.geometry?.dispose?.();
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
+      });
+      this._env.dispose();
+      this._pmrem.dispose();
+      this.renderer.dispose();
+      this.renderer.forceContextLoss();
+    }, 50);
   }
 }
 

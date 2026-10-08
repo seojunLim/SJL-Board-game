@@ -252,12 +252,23 @@ export default function go(ctx) {
     if (ghost) { S.remove(ghost); ghost = null; }
     if (g) { ghost = makeStone(seat === 0 ? 1 : 2, seat === 0 ? ghostB : ghostW); ghost.castShadow = false; ghost.position.copy(toWorld(g.r, g.c)); S.add(ghost); }
   };
-  stage.onPick = (pick, point) => {
+  // Touch: first tap previews the stone, a second tap on the same point plays
+  // it (19x19 intersections are small on a phone, so mis-taps are common).
+  let armed = null;
+  stage.onPick = (pick, point, obj, ptr) => {
     if (!st || st.over || !point) return;
     stage.finishTweens();
     const g = nearest(point); if (!g) return;
-    if (st.phase === 'scoring') ctx.send({ type: 'toggle-dead', r: g.r, c: g.c });
-    else if (st.turn === seat) { ctx.send({ type: 'place', r: g.r, c: g.c }); stage.onHover(null, null); }
+    if (st.phase === 'scoring') return ctx.send({ type: 'toggle-dead', r: g.r, c: g.c });
+    if (st.turn !== seat || st.board[g.r][g.c] !== 0) return;
+    if (ptr === 'touch' && !(armed && armed.r === g.r && armed.c === g.c)) {
+      armed = g;
+      stage.onHover(null, point);
+      return;
+    }
+    armed = null;
+    ctx.send({ type: 'place', r: g.r, c: g.c });
+    stage.onHover(null, null);
   };
 
   // ------------------------------------------------------------ controls

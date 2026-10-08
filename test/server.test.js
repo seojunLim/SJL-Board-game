@@ -2,7 +2,7 @@
 // End-to-end socket test: two clients create a room, play, and finish a game.
 const assert = require('assert');
 const { io } = require('socket.io-client');
-const { server } = require('../server');
+const { server, rooms } = require('../server');
 
 const wait = (sock, ev) => new Promise(res => sock.once(ev, res));
 
@@ -71,6 +71,43 @@ function track(sock) {
   console.log('  ✓ chat relayed');
 
   a.close(); b.close();
+
+  // ---- booth robustness: phones drop and come back
+  const mk = () => io(url, { transports: ['websocket'], forceNew: true });
+  const p1 = mk(), p2 = mk();
+  await Promise.all([wait(p1, 'connect'), wait(p2, 'connect')]);
+  p1.emit('lobby:join', { name: '폰1', pid: 'device-aaa111' });
+  p2.emit('lobby:join', { name: '폰2', pid: 'device-bbb222' });
+  const r2 = await new Promise(res => p1.emit('room:create', { gameId: 'chess', name: '폰1', pid: 'device-aaa111' }, res));
+  await new Promise(res => p2.emit('room:join', { code: r2.room.code, name: '폰2', pid: 'device-bbb222' }, res));
+  const st1 = track(p1);
+  const go = wait(p1, 'game:start');
+  p1.emit('room:ready', true); p2.emit('room:ready', true);
+  await go;
+  // both phones lock at once: the game must survive
+  p1.close(); p2.close();
+  await new Promise(res => setTimeout(res, 150));
+  assert.ok(rooms.has(r2.room.code), 'started room survives everyone disconnecting');
+  console.log('  ✓ game survives every player dropping at once');
+
+  // an impostor with the same nickname but another device does not get the seat
+  const imp = mk(); await wait(imp, 'connect');
+  const ij = await new Promise(res => imp.emit('room:join', { code: r2.room.code, name: '폰1', pid: 'device-zzz999' }, res));
+  assert.ok(ij.ok);
+  const roomObj = rooms.get(r2.room.code);
+  assert.strictEqual(roomObj.players[0].connected, false, 'seat not stolen by same name');
+  console.log('  ✓ same nickname from another device cannot take a seat');
+
+  // the real device comes back and gets its seat (and colour) again
+  const back = mk(); const bst = track(back); await wait(back, 'connect');
+  const bj = await new Promise(res => back.emit('room:join', { code: r2.room.code, name: '폰1', pid: 'device-aaa111' }, res));
+  assert.ok(bj.ok);
+  if (!bst.state) await bst.next();
+  assert.strictEqual(bst.seat, 0);
+  assert.strictEqual(roomObj.players[0].connected, true);
+  console.log('  ✓ reconnecting device reclaims its seat');
+  imp.close(); back.close();
+  void st1;
   server.close();
   console.log('\nserver e2e: all checks passed.');
   process.exit(0);
