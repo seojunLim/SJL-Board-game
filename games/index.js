@@ -6,7 +6,12 @@ const list = [
   require('./davinci'),
   require('./louie'),
   require('./halligalli'),
-  require('./uno')
+  require('./uno'),
+  require('./gomoku'),
+  require('./quoridor'),
+  require('./blokus'),
+  require('./rummikub'),
+  require('./dobble')
 ];
 const byId = {};
 for (const g of list) byId[g.id] = g;

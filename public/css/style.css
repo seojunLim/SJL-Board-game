@@ -256,3 +256,5 @@ body.inRoom .credit{padding:10px;font-size:12px}
 .panelGuess .numGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
 .panelGuess .numGrid button{padding:8px 0}
 .panelGuess .muted{text-align:center}
+.lockBar{display:none;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:rgba(120,20,20,.85);color:#fff;
+  font-weight:800;border-radius:999px;padding:6px 16px;line-height:1.4;pointer-events:none}

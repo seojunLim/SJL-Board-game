@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { server } = require('../server');
 const OUT = path.join(__dirname, '..', 'public', 'img', 'covers');
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블' };
 const only = process.argv.slice(2);
 (async () => {
   await new Promise(r => server.listen(0, r));
@@ -60,5 +60,34 @@ const only = process.argv.slice(2);
   });
   await run('uno', 4, null);
   await run('louie', 4, async () => {});
+  await run('gomoku', 2, async ([a, c]) => {
+    const mv = [[7, 7], [7, 8], [6, 6], [8, 8], [5, 5], [6, 8], [8, 6], [5, 8], [6, 7], [9, 9], [8, 7], [4, 8]];
+    for (let i = 0; i < mv.length; i++) await click(i % 2 ? c : a, 'sq:' + mv[i].join(','));
+  });
+  await run('quoridor', 2, async ([a, c]) => {
+    const wall = async (p, o, x) => { await p.bringToFront(); await p.click(`button:has-text("${o === 'h' ? '가로 벽' : '세로 벽'}")`); await click(p, 'cross:' + x); };
+    await click(a, 'sq:7,4');
+    await wall(c, 'h', '5,3');
+    await wall(a, 'v', '1,4');
+    await click(c, 'sq:1,4');
+    await wall(a, 'h', '2,2');
+    await wall(c, 'v', '5,5');
+    await click(a, 'sq:6,4');
+  });
+  await run('blokus', 2, async ([a, c]) => {
+    const seq = [[a, 'V5', '1,0'], [c, 'O4', '0,18'], [a, 'O4', '18,18'], [c, 'O4', '18,0'],
+      [a, 'W5', '3,3'], [c, 'I4', '3,17'], [a, 'I5', '16,17'], [c, 'T5', '16,2'], [a, 'L5', '5,6']];
+    for (const [p, id, sq] of seq) { await click(p, 'piece:' + id); await click(p, 'sq:' + sq); await p.waitForTimeout(300); }
+  });
+  await run('rummikub', 3, async ([a]) => {
+    const rk = await a.evaluate(() => document.querySelector('#board').__test.rack());
+    await click(a, 'tile:' + rk[0]); await click(a, 'newset');
+    await click(a, 'tile:' + rk[1]); await click(a, 'slot:0,1');
+    await click(a, 'tile:' + rk[2]); await click(a, 'slot:0,2');
+    await click(a, 'tile:' + rk[7]); await click(a, 'newset');
+    await click(a, 'tile:' + rk[9]);
+  });
+  await run('dobble', 4, async ([a, b]) => { await click(b, 'common'); await b.waitForTimeout(500); });
+
   await b.close(); server.close(); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

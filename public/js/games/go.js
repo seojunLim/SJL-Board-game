@@ -1,4 +1,4 @@
-import { Stage, THREE, EASE } from '../three3d/scene.js';
+import { Stage, THREE, EASE, MOBILE } from '../three3d/scene.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { woodTexture, shellTexture, paintedTexture } from '../three3d/textures.js';
 import { btn, el, fillLog } from '../three3d/ui.js';
@@ -27,9 +27,9 @@ function gobanTop(n) {
       g.beginPath(); g.moveTo(o + i * step, o); g.lineTo(o + i * step, o + (n - 1) * step); g.stroke();
       g.beginPath(); g.moveTo(o, o + i * step); g.lineTo(o + (n - 1) * step, o + i * step); g.stroke();
     }
-    const stars = n === 19 ? [3, 9, 15] : n === 13 ? [3, 6, 9] : [2, 4, 6];
+    const stars = n === 19 ? [3, 9, 15] : n === 15 ? [3, 7, 11] : n === 13 ? [3, 6, 9] : [2, 4, 6];
     g.fillStyle = 'rgba(30,18,6,0.95)';
-    const stars2 = n === 9 ? [[2, 2], [2, 6], [6, 2], [6, 6], [4, 4]] : stars.flatMap(a => stars.map(b => [a, b]));
+    const stars2 = n === 9 ? [[2, 2], [2, 6], [6, 2], [6, 6], [4, 4]] : n === 15 ? [[3, 3], [3, 11], [11, 3], [11, 11], [7, 7]] : stars.flatMap(a => stars.map(b => [a, b]));
     for (const [a, b] of stars2) { g.beginPath(); g.arc(o + a * step, o + b * step, step * 0.1, 0, Math.PI * 2); g.fill(); }
   });
 }
@@ -64,7 +64,9 @@ function lidGeometry() {
   const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 48); g.computeVertexNormals(); return g;
 }
 
-export default function go(ctx) {
+// opts.gomoku: same board and stones, 15x15, no captures/scoring, win line glow.
+export default function go(ctx, opts = {}) {
+  const GOMOKU = !!opts.gomoku;
   const holder = el('div', 'stageWrap');
   const bar = el('div', 'row controls');
   ctx.root.append(holder, bar);
@@ -184,9 +186,11 @@ export default function go(ctx) {
     for (const s of stones.values()) stoneGroup.remove(s.mesh);
     stones.clear();
     fillBowls(); lidCount[0] = lidCount[1] = -1;
-    stage.setView({ radius: n <= 9 ? 12.5 : n <= 13 ? 14 : 15.5 }, false);
+    stage.setView({ radius: n <= 9 ? 12.5 : n <= 13 ? 14 : n <= 15 ? 14.5 : 15.5 }, false);
   }
 
+  const winGroup = new THREE.Group(); S.add(winGroup);
+  const winMat = new THREE.MeshBasicMaterial({ color: 0xffc861, toneMapped: false });
   function sync(state) {
     const dead = new Set(state.dead || []);
     const newHist = state.history.length;
@@ -229,6 +233,14 @@ export default function go(ctx) {
       marker.visible = true;
     } else marker.visible = false;
 
+    winGroup.clear();
+    if (GOMOKU && state.line) {
+      for (const [r, c] of state.line) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(sr * 1.05, sr * 0.12, 10, 32).rotateX(Math.PI / 2), winMat);
+        ring.position.copy(toWorld(r, c, H + 0.03)); winGroup.add(ring);
+      }
+      marker.visible = false;
+    }
     terrGroup.clear();
     if (state.phase === 'scoring' || (state.over && state.scoreInfo)) {
       const terr = territory(state.board, n, dead);
@@ -287,10 +299,12 @@ export default function go(ctx) {
       const si = st.scoreInfo || { black: 0, white: 0 };
       s = `<b>계가 중</b> — 죽은 돌을 클릭해 표시<br>흑 ${si.black} : 백 ${si.white} (덤 ${st.komi})<br>
         <span class="muted">동의: ${st.scoreAccept.map((a, i) => (i === 0 ? '흑' : '백') + (a ? '✅' : '⬜')).join(' ')}</span>`;
-    } else s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>따낸 돌 — 흑 ${st.captures[0]} / 백 ${st.captures[1]}<br>
+    } else if (GOMOKU) s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>
+      <span class="muted">정확히 5개를 이으면 승리 · 흑은 쌍삼 금지${MOBILE ? '<br>폰: 한 번 탭 = 미리보기, 한 번 더 = 착수' : ''}</span>`;
+    else s = `차례: <b>${st.turn === 0 ? '흑' : '백'}</b><br>나: ${my}<br>따낸 돌 — 흑 ${st.captures[0]} / 백 ${st.captures[1]}<br>
       <span class="muted">덤 ${st.komi} · 드래그 회전 · 휠 확대</span>`;
     ctx.status.innerHTML = s;
-    passB.classList.toggle('hidden', st.phase !== 'play'); passB.disabled = st.over || st.turn !== seat;
+    passB.classList.toggle('hidden', st.phase !== 'play' || GOMOKU); passB.disabled = st.over || st.turn !== seat;
     acceptB.classList.toggle('hidden', st.phase !== 'scoring' || st.over); acceptB.disabled = seat < 0 || (st.scoreAccept && st.scoreAccept[seat]);
     resumeB.classList.toggle('hidden', st.phase !== 'scoring' || st.over);
     resign.disabled = st.over || seat < 0;

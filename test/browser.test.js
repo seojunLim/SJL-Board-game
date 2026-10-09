@@ -7,7 +7,7 @@ const { chromium, devices } = require('playwright');
 const { server } = require('../server');
 
 const POLL = { polling: 100, timeout: 15000 };
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블' };
 
 (async () => {
   await new Promise(res => server.listen(0, res));
@@ -143,6 +143,54 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   console.log(`  ✓ uno (${code}): hand of ${handBefore} rendered as 3D cards, draw works`);
   await leave(host, guest);
 
+
+
+  // gomoku: tengen
+  code = await start('gomoku', host, guest);
+  await click3d(host, 'sq:7,7');
+  await guest.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('H8'), null, POLL);
+  console.log(`  ✓ gomoku (${code}): stone placed on the 15x15 board`);
+  await leave(host, guest);
+
+  // quoridor: pawn step, then a wall from the other player
+  code = await start('quoridor', host, guest);
+  await click3d(host, 'sq:7,4');
+  await guest.waitForFunction(() => /말 → e2/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  await guest.bringToFront();
+  await guest.click('button:has-text("가로 벽")');
+  await click3d(guest, 'cross:6,3');
+  await host.waitForFunction(() => /벽 \(가로\)/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  console.log(`  ✓ quoridor (${code}): pawn moved and a wall slotted into a groove`);
+  await leave(host, guest);
+
+  // blokus: pick a piece from the tray and cover the corner
+  code = await start('blokus', host, guest);
+  await click3d(host, 'piece:V5');
+  await click3d(host, 'sq:1,0');
+  await guest.waitForFunction(() => /5칸 조각/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  console.log(`  ✓ blokus (${code}): first piece placed on the blue corner`);
+  await leave(host, guest);
+
+  // rummikub: edit the draft (red bar for an invalid set), undo, then draw
+  code = await start('rummikub', host, guest);
+  await host.bringToFront();
+  const rk = await host.evaluate(() => document.querySelector('#board').__test.rack());
+  await click3d(host, 'tile:' + rk[0]);
+  await click3d(host, 'newset');
+  const invalid = await host.evaluate(() => document.querySelector('#status').innerText.includes('빨간 줄'));
+  assert.ok(invalid, 'a one-tile set is flagged invalid');
+  await host.click('button:has-text("되돌리기")');
+  await host.click('button:has-text("1장 가져오기")');
+  await guest.waitForFunction(() => /가져갔습니다/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  console.log(`  ✓ rummikub (${code}): draft editing with live set checks, draw works`);
+  await leave(host, guest);
+
+  // dobble: click the symbol shared with the centre card
+  code = await start('dobble', host, guest);
+  await click3d(host, 'common');
+  await guest.waitForFunction(() => /호스트: .+!/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  console.log(`  ✓ dobble (${code}): spotted the shared symbol and took the centre card`);
+  await leave(host, guest);
 
   // ---- a visitor's phone: open the invite link, tap to play, survive a reload
   {
