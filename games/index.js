@@ -11,7 +11,8 @@ const list = [
   require('./quoridor'),
   require('./blokus'),
   require('./rummikub'),
-  require('./dobble')
+  require('./dobble'),
+  require('./splendor')
 ];
 const byId = {};
 for (const g of list) byId[g.id] = g;

@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { server } = require('../server');
 const OUT = path.join(__dirname, '..', 'public', 'img', 'covers');
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더' };
 const only = process.argv.slice(2);
 (async () => {
   await new Promise(r => server.listen(0, r));
@@ -88,6 +88,11 @@ const only = process.argv.slice(2);
     await click(a, 'tile:' + rk[9]);
   });
   await run('dobble', 4, async ([a, b]) => { await click(b, 'common'); await b.waitForTimeout(500); });
+
+  await run('splendor', 2, async ([a, c]) => {
+    const take = async (p, gems) => { for (const g of gems) await click(p, 'bank:' + g); await p.bringToFront(); await p.click('button:has-text("가져오기")'); await p.waitForTimeout(300); };
+    await take(a, ['w', 'u', 'g']); await take(c, ['r', 'k', 'w']); await take(a, ['r', 'k', 'u']);
+  });
 
   await b.close(); server.close(); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

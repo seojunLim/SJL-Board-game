@@ -3,7 +3,7 @@
 const { chromium, devices } = require('playwright');
 const path = require('path');
 const { server } = require('../server');
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더' };
 const [out, game, np = '2', script = '-', kind = 'laptop'] = process.argv.slice(2);
 (async () => {
   await new Promise(r => server.listen(0, r));

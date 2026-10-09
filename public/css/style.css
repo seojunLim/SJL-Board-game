@@ -258,3 +258,7 @@ body.inRoom .credit{padding:10px;font-size:12px}
 .panelGuess .muted{text-align:center}
 .lockBar{display:none;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:rgba(120,20,20,.85);color:#fff;
   font-weight:800;border-radius:999px;padding:6px 16px;line-height:1.4;pointer-events:none}
+.gemDot,.gemCard{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:3px;border-radius:50%;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.5);vertical-align:middle}
+.gemCard{border-radius:3px;height:20px;min-width:14px}
+.pickLine{display:inline-flex;align-items:center;gap:2px;min-height:24px}
+.chooser .opt.off{opacity:.45}

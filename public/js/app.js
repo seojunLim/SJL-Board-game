@@ -107,6 +107,7 @@ function openGameSheet(meta) {
   const r = RULES[meta.id] || {};
   document.querySelector('.gameSheet')?.remove();
   const sizes = meta.options && meta.options.size;
+  const targets = meta.options && meta.options.target;
   const m = el('div', 'gameSheet modalBack', `
     <div class="sheet">
       <div class="sheetCover"><img src="/img/covers/${meta.id}.jpg" alt="" onerror="this.remove()"><button class="closeX" aria-label="닫기">✕</button></div>
@@ -115,6 +116,7 @@ function openGameSheet(meta) {
       <div class="facts"><span>👥 ${playersLabel(meta)}</span><span>⏱ ${r.time || ''}</span></div>
       <p class="goal">🏆 ${r.goal || ''}</p>
       ${sizes ? `<div class="sizePick">${sizes.slice().reverse().map(s => `<label><input type="radio" name="sz" value="${s}" ${s === 9 ? 'checked' : ''}><span>${s}줄${s === 9 ? ' (추천)' : ''}</span></label>`).join('')}</div>` : ''}
+      ${targets ? `<div class="sizePick">${targets.map(v => `<label><input type="radio" name="tg" value="${v}" ${v === targets[0] ? 'checked' : ''}><span>${v}점${v === 15 ? ' 정식' : ' 빠른 판'}</span></label>`).join('')}</div>` : ''}
       <div class="sheetBtns">
         <button class="ghost big rulesOpen">📖 규칙 보기</button>
         <button class="primary big" id="createBtn">방 만들기</button>
@@ -127,6 +129,8 @@ function openGameSheet(meta) {
     const options = {};
     const sz = m.querySelector('input[name=sz]:checked');
     if (sz) options.size = Number(sz.value);
+    const tg = m.querySelector('input[name=tg]:checked');
+    if (tg) options.target = Number(tg.value);
     socket.emit('room:create', { gameId: meta.id, name: myName, options, pid }, res => {
       if (res.error) return toast(res.error);
       m.remove();

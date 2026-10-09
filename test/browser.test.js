@@ -7,7 +7,7 @@ const { chromium, devices } = require('playwright');
 const { server } = require('../server');
 
 const POLL = { polling: 100, timeout: 15000 };
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더' };
 
 (async () => {
   await new Promise(res => server.listen(0, res));
@@ -43,6 +43,7 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
     await host.bringToFront();
     await host.locator('.gameCard').filter({ hasText: LABEL[gameId] }).first().click();
     if (gameId === 'go') await host.check('input[name=sz][value="9"]');
+    if (gameId === 'splendor') await host.click('input[name=tg][value="10"] + span');
     await host.click('#createBtn');
     await host.waitForSelector('#room:not(.hidden)');
     const code = (await host.textContent('#roomCode')).trim();
@@ -190,6 +191,21 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   await click3d(host, 'common');
   await guest.waitForFunction(() => /호스트: .+!/.test(document.querySelector('#panelExtra').innerText), null, POLL);
   console.log(`  ✓ dobble (${code}): spotted the shared symbol and took the centre card`);
+  await leave(host, guest);
+
+  // splendor: take three gems, then reserve a card for a gold chip
+  code = await start('splendor', host, guest);
+  await host.waitForFunction(() => document.querySelector('#status').innerText.includes('목표 10점'), null, POLL);
+  for (const g of ['w', 'u', 'g']) await click3d(host, 'bank:' + g);
+  await host.click('button:has-text("가져오기")');
+  await guest.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('보석 가져오기'), null, POLL);
+  {
+    const id = await guest.evaluate(() => document.querySelector('#board').__test.state().market[1][0]);
+    await click3d(guest, 'card:' + id);
+    await guest.click('.chooser .opt:has-text("예약하기")');
+    await host.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('예약 (+황금)'), null, POLL);
+  }
+  console.log(`  ✓ splendor (${code}): took three gems and reserved a card for gold`);
   await leave(host, guest);
 
   // ---- a visitor's phone: open the invite link, tap to play, survive a reload

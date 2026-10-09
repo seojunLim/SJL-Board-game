@@ -456,6 +456,66 @@ t('right claim takes the centre card; wrong claim locks out', () => {
   void wrong;
 });
 
+console.log('splendor');
+const spl = games.byId.splendor;
+t('deck has 90 cards, 10 nobles, bank sized by players', () => {
+  assert.strictEqual(spl._internals.CARDS.length, 90);
+  assert.strictEqual(spl._internals.NOBLES.length, 10);
+  const s = spl.create(P2, {});
+  assert.strictEqual(s.bank.w, 4); assert.strictEqual(s.bank.o, 5); assert.strictEqual(s.nobles.length, 3); assert.strictEqual(s.target, 15);
+  assert.strictEqual(spl.create(THREE_P, { target: 10 }).target, 10);
+});
+t('take rules: 3 different, 2 same only from a pile of 4, no gold', () => {
+  const s = spl.create(P2, {});
+  assert.ok(spl.move(s, 0, { type: 'take', gems: ['w', 'w', 'u'] }).error);
+  assert.ok(spl.move(s, 0, { type: 'take', gems: ['o'] }).error);
+  assert.ok(spl.move(s, 0, { type: 'take', gems: ['w', 'u'] }).error);
+  assert.ok(spl.move(s, 0, { type: 'take', gems: ['w', 'w'] }).ok);
+  assert.ok(spl.move(s, 1, { type: 'take', gems: ['w', 'w'] }).error, 'only 2 white left');
+  assert.ok(spl.move(s, 1, { type: 'take', gems: ['u', 'g', 'r'] }).ok);
+  assert.strictEqual(s.turn, 0);
+});
+t('reserve gives gold, buy uses bonuses and gold, refill market', () => {
+  const s = spl.create(P2, {});
+  const id = s.market[1][0];
+  assert.ok(spl.move(s, 0, { type: 'reserve', card: id }).ok);
+  assert.strictEqual(s.players[0].tokens.o, 1);
+  assert.notStrictEqual(s.market[1][0], id);
+  const p = s.players[0];
+  const cost = spl._internals.CARDS[id].cost;
+  const total = Object.values(cost).reduce((a, b) => a + b, 0);
+  // give exactly cost minus one, the gold covers the rest
+  let skipped = false;
+  for (const [c, n] of Object.entries(cost)) { p.tokens[c] = n - (skipped ? 0 : 1); skipped = true; }
+  s.turn = 0;
+  assert.ok(spl.move(s, 0, { type: 'buy', card: id }).ok, 'buy reserved');
+  assert.strictEqual(p.tokens.o, 0);
+  assert.strictEqual(p.cards.length, 1);
+  assert.ok(total > 0);
+});
+t('more than 10 tokens forces a discard before the turn passes', () => {
+  const s = spl.create(P2, {});
+  s.players[0].tokens = { w: 3, u: 3, g: 2, r: 0, k: 0, o: 0 };
+  assert.ok(spl.move(s, 0, { type: 'take', gems: ['r', 'k', 'w'] }).ok);
+  assert.ok(s.discard); assert.strictEqual(s.turn, 0);
+  assert.ok(spl.move(s, 0, { type: 'take', gems: ['u'] }).error);
+  assert.ok(spl.move(s, 0, { type: 'discard', gems: { w: 1 } }).ok);
+  assert.strictEqual(s.turn, 1);
+});
+t('nobles visit and reaching the target finishes the round', () => {
+  const s = spl.create(P2, { target: 10 });
+  const C = spl._internals.CARDS, N = spl._internals.NOBLES;
+  const noble = N[s.nobles[0]];
+  const p = s.players[1];
+  for (const [c, n] of Object.entries(noble.req)) p.cards.push(...C.filter(x => x.color === c && x.level === 1 && x.points === 0).slice(0, n).map(x => x.id));
+  p.cards.push(...C.filter(x => x.level === 3 && x.points >= 4).slice(0, 2).map(x => x.id));
+  spl.move(s, 0, { type: 'take', gems: ['w', 'u', 'g'] });
+  spl.move(s, 1, { type: 'take', gems: ['w', 'u', 'g'] });
+  assert.ok(p.nobles.includes(noble.id));
+  assert.ok(s.over, 'seat 1 was last in the round');
+  assert.strictEqual(s.winner, 1);
+});
+
 console.log('registry');
 t('every game exposes the shared interface', () => {
   for (const g of games.list) {
