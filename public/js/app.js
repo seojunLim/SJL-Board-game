@@ -298,15 +298,15 @@ socket.on('game:state', ({ gameId, seat, state }) => {
   if (state.over && !current.overShown) {
     current.overShown = true;
     $('#rematchBtn').classList.remove('hidden');
-    setTimeout(() => showWin(state), 900);
+    setTimeout(() => showWin(state), (current.renderer && current.renderer.winDelay) || 900);
   }
 });
 
 function showWin(state) {
   if (!current.room) return;
   document.querySelector('.overlayWin')?.remove();
-  const meWon = state.winner != null && state.winner === current.seat;
-  const draw = state.winner == null;
+  const meWon = state.winner != null ? state.winner === current.seat : state.loser != null && current.seat >= 0 && state.loser !== current.seat;
+  const draw = state.winner == null && state.loser == null;
   const kind = draw ? 'draw' : meWon ? 'win' : current.seat >= 0 ? 'lose' : 'watch';
   const title = { win: '🏆 승리!', lose: '아쉬워요!', draw: '🤝 무승부', watch: '게임 종료' }[kind];
   const o = el('div', 'overlayWin ' + kind, `

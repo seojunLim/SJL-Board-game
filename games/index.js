@@ -12,7 +12,10 @@ const list = [
   require('./blokus'),
   require('./rummikub'),
   require('./dobble'),
-  require('./splendor')
+  require('./splendor'),
+  require('./onecard'),
+  require('./jenga'),
+  require('./penguin')
 ];
 const byId = {};
 for (const g of list) byId[g.id] = g;

@@ -11,5 +11,8 @@ import blokus from './blokus.js';
 import rummikub from './rummikub.js';
 import dobble from './dobble.js';
 import splendor from './splendor.js';
+import onecard from './onecard.js';
+import jenga from './jenga.js';
+import penguin from './penguin.js';
 
-export const renderers = { chess, go, othello, davinci, louie, halligalli, uno, gomoku, quoridor, blokus, rummikub, dobble, splendor };
+export const renderers = { chess, go, othello, davinci, louie, halligalli, uno, gomoku, quoridor, blokus, rummikub, dobble, splendor, onecard, jenga, penguin };

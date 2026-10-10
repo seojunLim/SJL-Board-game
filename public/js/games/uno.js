@@ -8,14 +8,28 @@ import { sfx } from '../three3d/sound.js';
 // and a ring of arrows that spins in the play direction glowing in the active
 // colour. Cards fly between hands and piles.
 
-const COLOR_HEX = { r: 0xd7261e, y: 0xf4c20d, g: 0x2e9a3e, b: 0x1d6bc6 };
-const COLOR_KO = { r: '빨강', y: '노랑', g: '초록', b: '파랑' };
 const CW = 1.1, CH = 1.7;
 const DECK_POS = new THREE.Vector3(-1.35, 0.07, -0.2);
 const PILE_POS = new THREE.Vector3(1.0, 0.07, -0.2);
 const TILT = 1.12;                       // how far hand cards stand up
 
-export default function uno(ctx) {
+const UNO = {
+  face: unoFaceTexture, back: unoBackTexture,
+  hex: { r: 0xd7261e, y: 0xf4c20d, g: 0x2e9a3e, b: 0x1d6bc6 },
+  ko: { r: '빨강', y: '노랑', g: '초록', b: '파랑' },
+  colorWord: '색', mat: { color: 0x6e1b22, sheen: 0xd06a74 },
+  needsColor: c => c.kind === 'wild' || c.kind === 'wd4',
+  flash: c => ({ skip: '⊘ 스킵!', rev: '⇄ 리버스!', d2: '+2', wd4: '+4 와일드!', wild: '★ 와일드!' })[c.kind],
+  call: 'UNO!', catchPenalty: 2, drawLabel: () => '🂠 카드 뽑기', statusExtra: () => '',
+  tagCall: 'UNO!'
+};
+export default function uno(ctx) { return cardTable(ctx, UNO); }
+
+// Shared card-table renderer (UNO, 원카드): cfg supplies the artwork,
+// the colour/suit names and the per-game wording.
+export function cardTable(ctx, cfg) {
+  const COLOR_HEX = cfg.hex, COLOR_KO = cfg.ko;
+  const unoFaceTexture = cfg.face;
   const holder = el('div', 'stageWrap');
   const bar = el('div', 'row controls');
   ctx.root.append(holder, bar);
@@ -24,10 +38,10 @@ export default function uno(ctx) {
 
   const stage = new Stage(holder, {
     camera: { radius: 14.5, phi: 0.74, minR: 8, maxR: 24, target: [0, 0.3, 0.7], minPhi: 0.2, maxPhi: 1.15 },
-    mat: { w: 15, h: 11.5, r: 1.6, color: 0x6e1b22, sheen: 0xd06a74 }
+    mat: { w: 15, h: 11.5, r: 1.6, color: cfg.mat.color, sheen: cfg.mat.sheen }
   });
   const S = stage.scene;
-  const back = unoBackTexture();
+  const back = cfg.back();
 
   // ------------------------------------------------------------ direction ring
   const ringGroup = new THREE.Group(); ringGroup.position.set(-0.15, 0.1, -0.2); S.add(ringGroup);
@@ -169,7 +183,7 @@ export default function uno(ctx) {
         }
         S.add(g); fanGroups.push(g);
       }
-      const label = `${st.names[i]}${i === seat ? ' (나)' : ''} · ${st.counts[i]}장${st.counts[i] === 1 ? ' UNO!' : ''}`;
+      const label = `${st.names[i]}${i === seat ? ' (나)' : ''} · ${st.counts[i]}장${st.counts[i] === 1 ? ' ' + cfg.tagCall : ''}${st.out && st.out[i] ? ' 💥파산' : ''}`;
       if (f.mine) continue;
       const tag = textSprite(label, { border: st.turn === i && !st.over ? '#ffc861' : null, scale: 0.0105 });
       const p = f.pos.clone().multiplyScalar(0.78).setY(1.7);
@@ -209,9 +223,9 @@ export default function uno(ctx) {
     if (pick.hand == null) return;
     const c = st.hand[pick.hand];
     if (!c || !c.playable) return;
-    if (c.kind === 'wild' || c.kind === 'wd4') {
-      const color = await choose('바꿀 색을 고르세요', ['r', 'y', 'g', 'b'].map(k => ({
-        value: k, label: COLOR_KO[k], icon: '●', style: `color:#${COLOR_HEX[k].toString(16).padStart(6, '0')}`
+    if (cfg.needsColor(c, st)) {
+      const color = await choose(`바꿀 ${cfg.colorWord}을 고르세요`, Object.keys(COLOR_KO).map(k => ({
+        value: k, label: COLOR_KO[k], icon: cfg.icon ? cfg.icon[k] : '●', style: `color:#${COLOR_HEX[k].toString(16).padStart(6, '0')}`
       })));
       if (!color) return;
       ctx.send({ type: 'play', index: pick.hand, chosenColor: color });
@@ -221,7 +235,7 @@ export default function uno(ctx) {
   // ------------------------------------------------------------ controls
   const drawB = btn('🂠 카드 뽑기', 'primary', () => ctx.send({ type: 'draw' }));
   const passB = btn('패스', 'ghost', () => ctx.send({ type: 'pass' }));
-  const unoB = btn('UNO!', 'unoBtn uno hidden', () => ctx.send({ type: 'uno' }));
+  const unoB = btn(cfg.call, 'unoBtn uno hidden', () => ctx.send({ type: 'uno' }));
   const catchWrap = el('span', 'row');
   bar.append(drawB, passB, unoB, catchWrap);
   const hud = el('div', 'hud'); holder.appendChild(hud);
@@ -242,12 +256,8 @@ export default function uno(ctx) {
       const target = new THREE.Vector3(PILE_POS.x, PILE_POS.y + 0.01 + Math.min(pileN, 40) * 0.009, PILE_POS.z);
       const card = lp.card;
       flyCard(unoFaceTexture(card), from, fromRot, target, new THREE.Euler(0, (Math.random() - 0.5) * 0.9, 0), 420, () => { pushPile(card); sfx.card(0.45); });
-      const kind = card.kind;
-      if (kind === 'skip') flash('⊘ 스킵!');
-      else if (kind === 'rev') flash('⇄ 리버스!');
-      else if (kind === 'd2') flash('+2');
-      else if (kind === 'wd4') flash('+4 와일드!');
-      else if (kind === 'wild') flash('★ 와일드!');
+      const fl = cfg.flash(card, state);
+      if (fl) flash(fl);
     }
     if (!first) {
       for (let i = 0; i < state.n; i++) {
@@ -269,7 +279,7 @@ export default function uno(ctx) {
     const hex = COLOR_HEX[state.color] || 0xffffff;
     arrowMat.color.setHex(hex); arrowMat.emissive.setHex(hex);
     colorGlow.material.color.setHex(hex);
-    if (prevColor && prevColor !== state.color && !first) flash(`색 변경 → ${COLOR_KO[state.color]}`);
+    if (prevColor && prevColor !== state.color && !first && cfg.needsColor(state.top, state)) flash(`${cfg.colorWord} 변경 → ${COLOR_KO[state.color]}`);
     prevColor = state.color;
     if (prevDir && prevDir !== state.dir) sfx.whoosh();
     prevDir = state.dir;
@@ -290,20 +300,22 @@ export default function uno(ctx) {
     ctx.status.innerHTML = st.over
       ? `<b>게임 종료</b><br>${st.result}`
       : `차례: <b>${st.names[st.turn]}</b> ${st.dir === 1 ? '⟳' : '⟲'}<br>나: ${my}${seat >= 0 ? ` · 내 카드 ${st.counts[seat]}장` : ''}<br>
-         현재 색 <b style="color:#${(COLOR_HEX[st.color] || 0xffffff).toString(16).padStart(6, '0')}">${COLOR_KO[st.color] || '-'}</b><br>
-         <span class="muted">${st.turn === seat ? (st.canPass ? '뽑은 카드를 내거나 패스하세요.' : '떠오른 카드를 내거나 덱을 클릭해 뽑으세요.') : '상대 차례…'}</span>`;
+         현재 ${cfg.colorWord} <b style="color:#${(COLOR_HEX[st.color] || 0xffffff).toString(16).padStart(6, '0')}">${COLOR_KO[st.color] || '-'}</b><br>
+         ${cfg.statusExtra(st, seat)}<span class="muted">${st.turn === seat ? (st.canPass ? '뽑은 카드를 내거나 패스하세요.' : '떠오른 카드를 내거나 덱을 클릭해 뽑으세요.') : '상대 차례…'}</span>`;
     hud.innerHTML = st.names.map((nm, i) => `<span class="chip ${st.turn === i && !st.over ? 'turn' : ''} ${i === seat ? 'me' : ''}">${nm} ${st.counts[i]}장</span>`).join('')
       + `<span class="chip">🂠 ${st.deckLeft}</span>`;
     drawB.disabled = !st.canDraw;
+    drawB.textContent = cfg.drawLabel(st);
     passB.classList.toggle('hidden', !st.canPass);
     unoB.classList.toggle('hidden', !st.needUno);
     catchWrap.innerHTML = '';
-    st.catchable.forEach((c, i) => { if (c) catchWrap.appendChild(btn(`${st.names[i]} 잡기! (+2)`, 'primary', () => ctx.send({ type: 'catch', target: i }))); });
+    st.catchable.forEach((c, i) => { if (c) catchWrap.appendChild(btn(`${st.names[i]} 잡기! (+${cfg.catchPenalty})`, 'primary', () => ctx.send({ type: 'catch', target: i }))); });
     fillLog(log, st.log);
   }
 
   let played = false;
   ctx.root.__test = {
+    state: () => st,
     screen: k => {
       if (k === 'deck') return stage.screenOf(DECK_POS.clone().setY(0.3));
       const i = Number(k.split(':')[1]);

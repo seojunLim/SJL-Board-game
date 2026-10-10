@@ -516,6 +516,106 @@ t('nobles visit and reaching the target finishes the round', () => {
   assert.strictEqual(s.winner, 1);
 });
 
+console.log('onecard');
+const oc = games.byId.onecard;
+const C = (suit, rank) => ({ suit, rank });
+t('deck has 54 cards and play follows suit or rank', () => {
+  assert.strictEqual(oc._internals.buildDeck().length, 54);
+  const s = oc.create(P2);
+  s.discard = [C('h', 5)]; s.suit = 'h';
+  s.hands[0] = [C('s', 9), C('s', 5), C('d', 4)];
+  assert.ok(oc.move(s, 0, { type: 'play', index: 0 }).error);
+  assert.ok(oc.move(s, 0, { type: 'play', index: 1 }).ok);
+  assert.strictEqual(s.suit, 's'); assert.strictEqual(s.turn, 1);
+});
+t('attacks stack, can be defended, and are taken by drawing', () => {
+  const s = oc.create(P2);
+  s.discard = [C('h', 5)]; s.suit = 'h';
+  s.hands[0] = [C('h', 2), C('c', 9), C('c', 8)];
+  s.hands[1] = [C('s', 2), C('h', 1), C('d', 9)];
+  assert.ok(oc.move(s, 0, { type: 'play', index: 0 }).ok);
+  assert.strictEqual(s.attack, 2);
+  assert.ok(oc.move(s, 1, { type: 'play', index: 2 }).error, 'plain card cannot answer an attack');
+  assert.ok(oc.move(s, 1, { type: 'play', index: 1 }).ok, 'A of the same suit defends');
+  assert.strictEqual(s.attack, 5);
+  const before = s.hands[0].length;
+  assert.ok(oc.move(s, 0, { type: 'draw' }).ok);
+  assert.strictEqual(s.hands[0].length, before + 5);
+  assert.strictEqual(s.attack, 0);
+});
+t('a 3 of the same suit blocks a 2; 7 changes the suit; K plays again; J skips', () => {
+  const s = oc.create(THREE_P);
+  s.discard = [C('h', 5)]; s.suit = 'h';
+  s.hands[0] = [C('h', 2), C('c', 9)];
+  s.hands[1] = [C('h', 3), C('h', 7), C('s', 4)];
+  oc.move(s, 0, { type: 'play', index: 0 });
+  assert.ok(oc.move(s, 1, { type: 'play', index: 0 }).ok);
+  assert.strictEqual(s.attack, 0);
+  s.turn = 1; s.hands[1] = [C('h', 7), C('s', 13), C('s', 11), C('d', 4)];
+  assert.ok(oc.move(s, 1, { type: 'play', index: 0 }).error, 'must choose a suit');
+  assert.ok(oc.move(s, 1, { type: 'play', index: 0, chosenColor: 's' }).ok);
+  assert.strictEqual(s.suit, 's'); assert.strictEqual(s.turn, 2);
+  s.turn = 1;
+  assert.ok(oc.move(s, 1, { type: 'play', index: 0 }).ok);
+  assert.strictEqual(s.turn, 1, 'K: same player again');
+  assert.ok(oc.move(s, 1, { type: 'play', index: 0 }).ok);
+  assert.strictEqual(s.turn, 0, 'J skips player 2');
+});
+t('20 cards in hand means bankruptcy', () => {
+  const s = oc.create(P2);
+  s.attack = 7; s.hands[1] = Array.from({ length: 14 }, () => C('c', 9));
+  s.turn = 1;
+  oc.move(s, 1, { type: 'draw' });
+  assert.ok(s.out[1]); assert.ok(s.over); assert.strictEqual(s.winner, 0);
+});
+
+console.log('jenga');
+const jg = games.byId.jenga;
+t('top layers are off limits and pulled blocks go on top', () => {
+  const s = jg.create(P2);
+  assert.ok(jg.move(s, 0, { type: 'pull', layer: 17, slot: 0, steady: 1 }).error);
+  const v = jg.view(s, 0);
+  assert.strictEqual(v.risks[17][0], null);
+  assert.ok(v.risks[16][1] != null);
+  // retry until it survives (risk is tiny at the start)
+  let s2;
+  for (let k = 0; k < 20; k++) { s2 = jg.create(P2); jg.move(s2, 0, { type: 'pull', layer: 5, slot: 1, steady: 1 }); if (!s2.over) break; }
+  assert.strictEqual(s2.layers.length, 19);
+  assert.deepStrictEqual(s2.layers[18], [true, false, false]);
+  assert.strictEqual(s2.turn, 1);
+  assert.ok(jg.move(s2, 1, { type: 'pull', layer: 17, slot: 0, steady: 1 }).error, 'layer under an unfinished top is off limits');
+});
+t('leaving a lone edge block always topples the tower', () => {
+  const s = jg.create(P2);
+  s.layers[3] = [true, false, true];
+  assert.strictEqual(jg._internals.riskOf(s, 3, 0), 1);
+  jg.move(s, 0, { type: 'pull', layer: 3, slot: 0, steady: 1 });
+  assert.ok(s.over && s.collapsed); assert.strictEqual(s.loser, 0); assert.strictEqual(s.winner, 1);
+});
+
+console.log('penguin');
+const pg = games.byId.penguin;
+t('blocks cut off from the frame fall, the penguin needs two neighbours', () => {
+  const s = pg.create(P2);
+  const never = () => 1;
+  // cut a ring around the centre 3x3: everything inside drops
+  const ring = [];
+  for (let r = 1; r <= 5; r++) for (let c = 1; c <= 5; c++) if (r === 1 || r === 5 || c === 1 || c === 5) ring.push([r, c]);
+  for (const [r, c] of ring.slice(0, -1)) s.ice[r][c] = false;
+  const [lr, lc] = ring[ring.length - 1];
+  pg.move(s, 0, { type: 'hit', r: lr, c: lc }, never);
+  assert.ok(s.over, 'the inner island dropped with the penguin');
+  assert.strictEqual(s.loser, 0);
+  const s2 = pg.create(P2);
+  s2.ice[2][3] = false; s2.ice[3][2] = false;
+  pg.move(s2, 0, { type: 'hit', r: 4, c: 3 }, never);
+  assert.ok(s2.over, 'one neighbour left: the penguin falls');
+  const s3 = pg.create(P2);
+  assert.ok(pg.move(s3, 0, { type: 'hit', r: 0, c: 0 }, never).ok);
+  assert.ok(!s3.over); assert.strictEqual(s3.turn, 1);
+  assert.ok(pg.move(s3, 1, { type: 'hit', r: 0, c: 0 }, never).error);
+});
+
 console.log('registry');
 t('every game exposes the shared interface', () => {
   for (const g of games.list) {

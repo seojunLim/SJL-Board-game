@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { server } = require('../server');
 const OUT = path.join(__dirname, '..', 'public', 'img', 'covers');
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더', onecard: '원카드', jenga: '젠가', penguin: '펭귄' };
 const only = process.argv.slice(2);
 (async () => {
   await new Promise(r => server.listen(0, r));
@@ -92,6 +92,25 @@ const only = process.argv.slice(2);
   await run('splendor', 2, async ([a, c]) => {
     const take = async (p, gems) => { for (const g of gems) await click(p, 'bank:' + g); await p.bringToFront(); await p.click('button:has-text("가져오기")'); await p.waitForTimeout(300); };
     await take(a, ['w', 'u', 'g']); await take(c, ['r', 'k', 'w']); await take(a, ['r', 'k', 'u']);
+  });
+
+  await run('onecard', 3, async pl => {
+    for (let k = 0; k < 6; k++) for (const p of pl) {
+      const st = await p.evaluate(() => document.querySelector('#board').__test.state());
+      if (st.turn !== st.mySeat || st.over) continue;
+      const i = st.hand.findIndex(c => c.playable && c.rank !== 7);
+      if (i >= 0) await click(p, 'hand:' + i); else { await p.bringToFront(); await p.click('.controls button.primary'); await p.waitForTimeout(300); }
+    }
+  });
+  await run('jenga', 2, async ([a, c]) => {
+    for (const [p, l, s] of [[a, 4, 1], [c, 7, 1], [a, 10, 1]]) {
+      await p.bringToFront(); await p.evaluate(([l, s]) => document.querySelector('#board').__test.pick(l, s), [l, s]);
+      await p.waitForTimeout(300); await p.evaluate(() => document.querySelector('#board').__test.pullSteady(1)); await p.waitForTimeout(1800);
+      if (await p.evaluate(() => document.querySelector('#board').__test.state().over)) break;
+    }
+  });
+  await run('penguin', 2, async ([a, c]) => {
+    for (const [p, k] of [[a, '0,0'], [c, '6,6'], [a, '1,3'], [c, '0,5'], [a, '5,1'], [c, '2,6']]) { await click(p, 'ice:' + k); await p.waitForTimeout(900); }
   });
 
   await b.close(); server.close(); process.exit(0);

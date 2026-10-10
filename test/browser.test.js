@@ -7,7 +7,7 @@ const { chromium, devices } = require('playwright');
 const { server } = require('../server');
 
 const POLL = { polling: 100, timeout: 15000 };
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더', onecard: '원카드', jenga: '젠가', penguin: '펭귄' };
 
 (async () => {
   await new Promise(res => server.listen(0, res));
@@ -206,6 +206,34 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
     await host.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('예약 (+황금)'), null, POLL);
   }
   console.log(`  ✓ splendor (${code}): took three gems and reserved a card for gold`);
+  await leave(host, guest);
+
+  // onecard: play a matching card or draw
+  code = await start('onecard', host, guest);
+  {
+    const st = await host.evaluate(() => document.querySelector('#board').__test.state());
+    const i = st.hand.findIndex(c => c.playable && c.rank !== 7);
+    if (i >= 0) await click3d(host, 'hand:' + i); else { await host.bringToFront(); await host.click('.controls button.primary'); }
+    await guest.waitForFunction(() => /호스트(: | 1장)/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  }
+  console.log(`  ✓ onecard (${code}): played a card on the shared card table`);
+  await leave(host, guest);
+
+  // jenga: pick a block and pull it with the timing bar
+  code = await start('jenga', host, guest);
+  await host.bringToFront();
+  await host.evaluate(() => document.querySelector('#board').__test.pick(4, 0));
+  await host.waitForSelector('.pullGame:not(.hidden)');
+  await host.click('.pgGo');
+  await guest.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('5층 블록'), null, POLL);
+  console.log(`  ✓ jenga (${code}): pulled a block with the timing bar`);
+  await leave(host, guest);
+
+  // penguin: knock out a corner cube with the hammer
+  code = await start('penguin', host, guest);
+  await click3d(host, 'ice:0,0');
+  await guest.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('얼음 깨기'), null, POLL);
+  console.log(`  ✓ penguin (${code}): broke a block of ice`);
   await leave(host, guest);
 
   // ---- a visitor's phone: open the invite link, tap to play, survive a reload
