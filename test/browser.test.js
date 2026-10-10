@@ -277,12 +277,8 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   await host.bringToFront();
   await host.waitForFunction(() => { const t = document.querySelector('#board').__test; return t.state().phase === 'attack' && !t.playing(); }, null, { polling: 200, timeout: 30000 });
   await host.waitForTimeout(800);
-  {
-    const sp = await host.evaluate(() => document.querySelector('#board').__test.screen('sling:0'));
-    await host.mouse.move(sp.x, sp.y); await host.mouse.down();
-    await host.mouse.move(sp.x, sp.y + 40, { steps: 3 }); await host.mouse.move(sp.x, sp.y + 90, { steps: 3 });
-    await host.mouse.up();
-  }
+  // (headless WebGL is too slow for a timed drag; the drag itself is exercised in tools/play.cjs runs)
+  await host.evaluate(() => { const t = document.querySelector('#board').__test; const s = t.state(); const p = s.plots[0], o = s.plots[1]; t.shoot({ yaw: Math.atan2(o.cx - p.sx, o.cz - p.sz), pitch: 0.2, power: 0.6 }); });
   await guest.waitForFunction(() => /발사|무너|탈락/.test(document.querySelector('#panelExtra').innerText), null, { polling: 200, timeout: 30000 });
   console.log(`  ✓ siege (${code}): castles built in fog, slingshot fired, physics replayed`);
   await leave(host, guest);
