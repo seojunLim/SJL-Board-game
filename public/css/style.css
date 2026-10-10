@@ -289,3 +289,4 @@ body.inRoom .credit{padding:10px;font-size:12px}
 .keyPop .kpT{font-size:22px;font-weight:900;margin-bottom:6px}
 .keyPop.hidden{display:none}
 @keyframes kpIn{from{transform:translate(-50%,-50%) scale(.6) rotate(-8deg);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+.siegePower{position:absolute;left:50%;top:52px;transform:translateX(-50%);background:rgba(20,16,12,.85);border:1px solid #6a5232;padding:6px 14px;border-radius:999px;font-weight:800;pointer-events:none;z-index:4}

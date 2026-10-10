@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { server } = require('../server');
 const OUT = path.join(__dirname, '..', 'public', 'img', 'covers');
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더', onecard: '원카드', jenga: '젠가', penguin: '펭귄', yacht: '요트', pirate: '통아저씨', sixnimmt: '젝스님트', marble: '부루마블' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치', louie: '루핑', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더', onecard: '원카드', jenga: '젠가', penguin: '펭귄', yacht: '요트', pirate: '통아저씨', sixnimmt: '젝스님트', marble: '부루마블', siege: '블록 공성전' };
 const only = process.argv.slice(2);
 (async () => {
   await new Promise(r => server.listen(0, r));
@@ -149,6 +149,18 @@ const only = process.argv.slice(2);
       await p.waitForTimeout(500);
     }
     for (let t = 0; t < 40; t++) { if (!(await pl[0].evaluate(() => document.querySelector('#board').__test.busy()))) break; await pl[0].waitForTimeout(250); }
+  });
+
+  await run('siege', 3, async pl => {
+    for (const [p, k] of [[pl[0], 'fort'], [pl[1], 'tower'], [pl[2], 'wall']]) await p.evaluate(k => document.querySelector('#board').__test.template(k), k);
+    await pl[0].waitForTimeout(500);
+    for (const p of pl) { await p.bringToFront(); await p.click('.controls button:has-text("완료")'); }
+    await pl[0].bringToFront();
+    await pl[0].waitForFunction(() => { const t = document.querySelector('#board').__test; return t.state().phase === 'attack' && !t.playing(); }, null, { polling: 200, timeout: 30000 });
+    // a direct hit on the tower from player 0
+    await pl[0].evaluate(() => { const t = document.querySelector('#board').__test; const s = t.state(); const p = s.plots[0], o = s.plots[1]; t.shoot({ yaw: Math.atan2(o.cx - p.sx, o.cz - p.sz), pitch: 0.18, power: 0.62 }); });
+    await pl[0].waitForTimeout(1500);
+    await pl[0].evaluate(() => document.querySelector('#board').__test.state());
   });
 
   await b.close(); server.close(); process.exit(0);

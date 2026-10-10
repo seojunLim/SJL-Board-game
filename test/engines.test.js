@@ -742,6 +742,43 @@ t('running out of money sells property, then bankrupts', () => {
   assert.ok(s.over); assert.strictEqual(s.winner, 1);
 });
 
+console.log('siege');
+const sg = games.byId.siege;
+const tower = []; for (let l = 0; l < 8; l++) for (let k = -1; k <= 1; k++) tower.push(l % 2 ? { k: 'b', o: 1, x: k, z: 0 } : { k: 'b', o: 0, x: 0, z: k });
+tower.push({ k: 'f', x: 0, z: 0 });
+t('building: stacking, budget, flag and minimum height are enforced', () => {
+  const r = sg._internals.stack([{ k: 'b', o: 0, x: 0, z: 0 }, { k: 'b', o: 1, x: 0, z: 0 }, { k: 'f', x: 0, z: 0 }], 24);
+  assert.deepStrictEqual(r.items.map(i => +i.y.toFixed(3)), [0.3, 0.9, 1.6]);
+  assert.ok(sg._internals.stack([{ k: 'b', o: 0, x: 2.5, z: 0 }], 24).error, 'off the plot');
+  const s = sg.create(P2, {});
+  assert.ok(sg.move(s, 0, { type: 'submit', items: tower.slice(0, -1) }).error, 'flag required');
+  assert.ok(sg.move(s, 0, { type: 'submit', items: [{ k: 'b', o: 0, x: 0, z: 0 }, { k: 'f', x: 0, z: 0 }] }).error, 'too low');
+  assert.ok(sg.move(s, 0, { type: 'submit', items: [...tower.slice(0, 24), { k: 'b', o: 0, x: 0, z: 2 }, tower[24]] }).error, 'over budget');
+  assert.strictEqual(sg.view(s, 1).myDraft.length, 0, 'drafts stay private');
+});
+t('the tower survives settling and shots are simulated on the server', () => {
+  const s = sg.create(P2, {});
+  sg.move(s, 0, { type: 'submit', items: tower });
+  sg.move(s, 1, { type: 'submit', items: tower });
+  assert.strictEqual(s.phase, 'attack');
+  assert.ok(s.heights[0] > 5 && s.alive.every(Boolean));
+  const p = s.plots[0], o = s.plots[1];
+  const n = s.bodies.length;
+  assert.ok(sg.move(s, 1, { type: 'shoot', yaw: 0, pitch: 0.3, power: 0.5 }).error, 'not your turn');
+  assert.ok(sg.move(s, 0, { type: 'shoot', yaw: Math.atan2(o.cx - p.sx, o.cz - p.sz), pitch: 0.12, power: 0.75 }).ok);
+  assert.strictEqual(s.bodies.length, n + 1, 'ammo stays on the table');
+  assert.ok(s.replay.frames.length > 5 && s.replay.ids.length > 0);
+  assert.ok(s.over || s.turn === 1);
+});
+t('a flag knocked off the pedestal eliminates its owner', () => {
+  const s = sg.create(P2, {});
+  sg.move(s, 0, { type: 'submit', items: tower }); sg.move(s, 1, { type: 'submit', items: tower });
+  const flag = s.bodies.find(b => b.owner === 1 && b.kind === 'f');
+  flag.p = [s.plots[1].cx + 6, 0.4, s.plots[1].cz];
+  sg._internals.judge(s);
+  assert.ok(!s.alive[1]); assert.ok(s.over); assert.strictEqual(s.winner, 0);
+});
+
 console.log('registry');
 t('every game exposes the shared interface', () => {
   for (const g of games.list) {

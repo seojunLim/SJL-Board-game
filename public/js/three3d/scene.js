@@ -213,7 +213,15 @@ export class Stage {
       return null;
     };
 
+    // A game can claim a drag (e.g. a slingshot pull): onDragStart(e, hit)
+    // returning true routes the gesture to onDragMove/onDragEnd instead of
+    // orbiting the camera.
+    let claimed = null;
     this._down = e => {
+      if (this.onDragStart && pointers.size === 0 && this.onDragStart(e, this._hit(e))) {
+        claimed = e.pointerId; el.setPointerCapture?.(e.pointerId);
+        return;
+      }
       downOnCanvas = true; moved = 0;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture?.(e.pointerId);
@@ -223,6 +231,7 @@ export class Stage {
       }
     };
     this._move = e => {
+      if (claimed != null) { if (e.pointerId === claimed && this.onDragMove) this.onDragMove(e); return; }
       const p = pointers.get(e.pointerId);
       if (p) {
         const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -244,6 +253,7 @@ export class Stage {
       }
     };
     this._up = e => {
+      if (claimed != null && e.pointerId === claimed) { claimed = null; if (this.onDragEnd) this.onDragEnd(e); return; }
       const had = pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch0 = 0;
       if (!had) return;

@@ -7,7 +7,7 @@ const { chromium, devices } = require('playwright');
 const { server } = require('../server');
 
 const POLL = { polling: 100, timeout: 15000 };
-const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더', onecard: '원카드', jenga: '젠가', penguin: '펭귄', yacht: '요트', pirate: '통아저씨', sixnimmt: '젝스님트', marble: '부루마블' };
+const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '다빈치 코드', louie: '루핑 루이', halligalli: '할리갈리', uno: '우노', gomoku: '오목', quoridor: '쿼리도', blokus: '블로커스', rummikub: '루미큐브', dobble: '도블', splendor: '스플렌더', onecard: '원카드', jenga: '젠가', penguin: '펭귄', yacht: '요트', pirate: '통아저씨', sixnimmt: '젝스님트', marble: '부루마블', siege: '블록 공성전' };
 
 (async () => {
   await new Promise(res => server.listen(0, res));
@@ -265,6 +265,26 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   await host.bringToFront(); await host.click('.controls button:has-text("굴리기")');
   await guest.waitForFunction(() => { const s = document.querySelector('#board').__test.state(); return s.seq > 0 && (s.players[0].pos !== 0 || s.players[0].island); }, null, POLL);
   console.log(`  ✓ marble (${code}): dice thrown and the pawn moved`);
+  await leave(host, guest);
+
+  // siege: build from templates, then fire the slingshot by dragging
+  code = await start('siege', host, guest);
+  await host.evaluate(() => document.querySelector('#board').__test.template('fort'));
+  await guest.evaluate(() => document.querySelector('#board').__test.template('tower'));
+  await host.waitForTimeout(400);
+  await host.bringToFront(); await host.click('.controls button:has-text("완료")');
+  await guest.bringToFront(); await guest.click('.controls button:has-text("완료")');
+  await host.bringToFront();
+  await host.waitForFunction(() => { const t = document.querySelector('#board').__test; return t.state().phase === 'attack' && !t.playing(); }, null, { polling: 200, timeout: 30000 });
+  await host.waitForTimeout(800);
+  {
+    const sp = await host.evaluate(() => document.querySelector('#board').__test.screen('sling:0'));
+    await host.mouse.move(sp.x, sp.y); await host.mouse.down();
+    await host.mouse.move(sp.x, sp.y + 40, { steps: 3 }); await host.mouse.move(sp.x, sp.y + 90, { steps: 3 });
+    await host.mouse.up();
+  }
+  await guest.waitForFunction(() => /발사|무너|탈락/.test(document.querySelector('#panelExtra').innerText), null, { polling: 200, timeout: 30000 });
+  console.log(`  ✓ siege (${code}): castles built in fog, slingshot fired, physics replayed`);
   await leave(host, guest);
 
   // ---- a visitor's phone: open the invite link, tap to play, survive a reload
