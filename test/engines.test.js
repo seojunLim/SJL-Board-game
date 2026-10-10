@@ -616,6 +616,132 @@ t('blocks cut off from the frame fall, the penguin needs two neighbours', () => 
   assert.ok(pg.move(s3, 1, { type: 'hit', r: 0, c: 0 }, never).error);
 });
 
+console.log('yacht');
+const ya = games.byId.yacht;
+t('category scores follow the Yacht rules', () => {
+  const f = ya._internals.scoreFor;
+  assert.strictEqual(f('threes', [3, 3, 1, 3, 6]), 9);
+  assert.strictEqual(f('fourKind', [5, 5, 5, 5, 2]), 22);
+  assert.strictEqual(f('fourKind', [5, 5, 5, 2, 2]), 0);
+  assert.strictEqual(f('fullHouse', [2, 2, 6, 6, 6]), 22);
+  assert.strictEqual(f('smallStraight', [1, 3, 4, 2, 6]), 15);
+  assert.strictEqual(f('largeStraight', [2, 3, 4, 5, 6]), 30);
+  assert.strictEqual(f('yacht', [4, 4, 4, 4, 4]), 50);
+  assert.strictEqual(ya._internals.totalOf({ ones: 3, twos: 6, threes: 9, fours: 12, fives: 15, sixes: 18 }), 63 + 35);
+});
+t('three rolls, holds kept, then score and pass the turn', () => {
+  const s = ya.create(P2);
+  assert.ok(ya.move(s, 0, { type: 'score', cat: 'choice' }).error, 'must roll first');
+  ya.move(s, 0, { type: 'roll' });
+  const kept = s.dice[0];
+  ya.move(s, 0, { type: 'hold', index: 0 });
+  ya.move(s, 0, { type: 'roll' }); ya.move(s, 0, { type: 'roll' });
+  assert.strictEqual(s.dice[0], kept);
+  assert.ok(ya.move(s, 0, { type: 'roll' }).error);
+  assert.ok(ya.move(s, 0, { type: 'score', cat: 'yacht' }).ok);
+  assert.strictEqual(s.turn, 1);
+  assert.ok(ya.move(s, 0, { type: 'roll' }).error);
+});
+
+console.log('pirate');
+const pi = games.byId.pirate;
+t('the trigger slot pops the pirate; option decides win or lose', () => {
+  const s = pi.create(P2, {});
+  assert.strictEqual(pi.view(s, 0).trigger, null, 'trigger stays secret');
+  const safe = s.trigger === 0 ? 1 : 0;
+  assert.ok(pi.move(s, 0, { type: 'stab', slot: safe }).ok);
+  assert.ok(pi.move(s, 1, { type: 'stab', slot: safe }).error);
+  pi.move(s, 1, { type: 'stab', slot: s.trigger });
+  assert.ok(s.over); assert.strictEqual(s.loser, 1); assert.strictEqual(s.winner, 0);
+  const w = pi.create(THREE_P, { mode: 1 });
+  pi.move(w, 0, { type: 'stab', slot: w.trigger });
+  assert.strictEqual(w.winner, 0);
+});
+
+console.log('sixnimmt');
+const sn = games.byId.sixnimmt;
+t('bull heads and the sixth-card rule', () => {
+  const h = sn._internals.heads;
+  assert.deepStrictEqual([1, 5, 10, 11, 55, 100].map(h), [1, 2, 3, 5, 7, 3]);
+  const s = sn.create(P2, {});
+  s.rows = [[10, 20, 30, 40, 50], [60], [70], [80]];
+  s.hands = [[55, 1], [61, 2]];
+  sn.move(s, 0, { type: 'choose', card: 55 });
+  assert.strictEqual(s.phase, 'choose');
+  sn.move(s, 1, { type: 'choose', card: 61 });
+  assert.deepStrictEqual(s.rows[0], [55]);
+  assert.deepStrictEqual(s.taken[0], [10, 20, 30, 40, 50]);
+  assert.deepStrictEqual(s.rows[1], [60, 61]);
+});
+t('a card below every row makes its player pick a row', () => {
+  const s = sn.create(P2, {});
+  s.rows = [[10, 20], [30], [40], [50]];
+  s.hands = [[5, 99], [45, 98]];
+  sn.move(s, 0, { type: 'choose', card: 5 });
+  sn.move(s, 1, { type: 'choose', card: 45 });
+  assert.strictEqual(s.phase, 'pickRow'); assert.strictEqual(s.picker, 0);
+  assert.ok(sn.move(s, 1, { type: 'pickRow', row: 0 }).error);
+  sn.move(s, 0, { type: 'pickRow', row: 1 });
+  assert.deepStrictEqual(s.taken[0], [30]);
+  assert.deepStrictEqual(s.rows[1], [5]);
+  assert.deepStrictEqual(s.rows[2], [40, 45]);
+  assert.strictEqual(s.phase, 'choose');
+});
+t('one-hand game ends after ten rounds', () => {
+  const s = sn.create(THREE_P, {});
+  for (let r = 0; r < 10 && !s.over; r++) {
+    for (let i = 0; i < 3; i++) sn.move(s, i, { type: 'choose', card: s.hands[i][0] });
+    while (s.phase === 'pickRow') sn.move(s, s.picker, { type: 'pickRow', row: 0 });
+  }
+  assert.ok(s.over);
+});
+
+console.log('marble');
+const mb = games.byId.marble;
+function withDice(vals, fn) {
+  const r = Math.random; let k = 0;
+  Math.random = () => (vals[k++ % vals.length] - 1) / 6 + 0.01;
+  try { fn(); } finally { Math.random = r; }
+}
+t('buying, building, salary and rent', () => {
+  const s = mb.create(P2, {});
+  s.players[0].pos = 37;
+  withDice([1, 6], () => mb.move(s, 0, { type: 'roll' }));     // 37 + 7 -> 4 (마닐라)
+  assert.strictEqual(s.players[0].pos, 4);
+  assert.strictEqual(s.players[0].cash, 320, 'salary for passing the start');
+  assert.strictEqual(s.phase, 'buy');
+  mb.move(s, 0, { type: 'buy' });
+  assert.strictEqual(s.owner[4], 0); assert.strictEqual(s.phase, 'build');
+  mb.move(s, 0, { type: 'build' });
+  assert.strictEqual(s.level[4], 1); assert.strictEqual(s.turn, 1);
+  const rent = mb._internals.rentOf(s, 4);
+  const c0 = s.players[0].cash, c1 = s.players[1].cash;
+  withDice([1, 3], () => mb.move(s, 1, { type: 'roll' }));     // 0 + 4 -> 마닐라
+  assert.strictEqual(s.players[1].cash, c1 - rent);
+  assert.strictEqual(s.players[0].cash, c0 + rent);
+});
+t('three doubles send you to the island; the island holds you', () => {
+  const s = mb.create(P2, {});
+  withDice([1], () => {
+    for (let k = 0; k < 3; k++) { if (s.phase !== 'roll') mb.move(s, 0, { type: 'pass' }); mb.move(s, 0, { type: 'roll' }); }
+  });
+  assert.strictEqual(s.players[0].pos, 10);
+  assert.strictEqual(s.players[0].island, 3);
+  assert.strictEqual(s.turn, 1);
+});
+t('running out of money sells property, then bankrupts', () => {
+  const s = mb.create(P2, {});
+  s.owner[39] = 1;                    // 서울, rent 50
+  s.owner[1] = 0; s.level[1] = 1;     // 타이베이 with a villa
+  s.players[0].cash = 10; s.players[0].pos = 33;
+  const c1 = s.players[1].cash;
+  withDice([3, 3], () => mb.move(s, 0, { type: 'roll' }));     // 33 + 6 -> 서울
+  assert.ok(s.players[0].out);
+  assert.strictEqual(s.owner[1], -1);
+  assert.ok(s.players[1].cash > c1 + 10, 'the owner got the cash and the sale money');
+  assert.ok(s.over); assert.strictEqual(s.winner, 1);
+});
+
 console.log('registry');
 t('every game exposes the shared interface', () => {
   for (const g of games.list) {

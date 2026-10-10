@@ -13,7 +13,7 @@ const CW = 1.0, CH = 1.48;
 const ROW_Z = [-2.55, -0.85, 0.85, 2.55];
 const SLOT_X = j => -3.1 + j * 1.18;
 const REVEAL_Z = -4.55;
-const PILE = new THREE.Vector3(-5.6, 0, 4.7);
+const PILE = new THREE.Vector3(5.3, 0, 2.4);
 const TILT = 1.05;
 const EMOJI = '"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif';
 

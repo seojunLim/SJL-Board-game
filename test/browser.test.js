@@ -236,6 +236,37 @@ const LABEL = { chess: '체스', go: '바둑', othello: '오델로', davinci: '�
   console.log(`  ✓ penguin (${code}): broke a block of ice`);
   await leave(host, guest);
 
+  // yacht: roll and score Choice
+  code = await start('yacht', host, guest);
+  await host.bringToFront(); await host.click('.controls button:has-text("굴리기")');
+  await host.waitForSelector('.yachtSheet td.mine[data-cat="choice"]', { timeout: 15000 });
+  await host.click('.yachtSheet td.mine[data-cat="choice"]');
+  await guest.waitForFunction(() => document.querySelector('#panelExtra').innerText.includes('호스트: 초이스'), null, POLL);
+  console.log(`  ✓ yacht (${code}): rolled the 3D dice and scored Choice`);
+  await leave(host, guest);
+
+  // pirate: push a sword into a slot
+  code = await start('pirate', host, guest);
+  await host.bringToFront(); await host.evaluate(() => document.querySelector('#board').__test.face(0)); await host.waitForTimeout(200);
+  await click3d(host, 'slot:0');
+  await guest.waitForFunction(() => /칼 꽂기|퐁/.test(document.querySelector('#panelExtra').innerText), null, POLL);
+  console.log(`  ✓ pirate (${code}): sword pushed into the barrel`);
+  await leave(host, guest);
+
+  // sixnimmt: both pick a card at once and the round resolves
+  code = await start('sixnimmt', host, guest);
+  for (const p of [host, guest]) { const c = await p.evaluate(() => document.querySelector('#board').__test.state().myHand[9]); await click3d(p, 'card:' + c); }
+  await host.waitForFunction(() => { const s = document.querySelector('#board').__test.state(); return s.round >= 2 || s.phase === 'pickRow'; }, null, POLL);
+  console.log(`  ✓ sixnimmt (${code}): simultaneous pick revealed and placed`);
+  await leave(host, guest);
+
+  // marble: roll and move round the board
+  code = await start('marble', host, guest);
+  await host.bringToFront(); await host.click('.controls button:has-text("굴리기")');
+  await guest.waitForFunction(() => { const s = document.querySelector('#board').__test.state(); return s.seq > 0 && (s.players[0].pos !== 0 || s.players[0].island); }, null, POLL);
+  console.log(`  ✓ marble (${code}): dice thrown and the pawn moved`);
+  await leave(host, guest);
+
   // ---- a visitor's phone: open the invite link, tap to play, survive a reload
   {
     const pctx = await browser.newContext({ ...devices['iPhone 13'] });

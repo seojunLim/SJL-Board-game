@@ -18,7 +18,8 @@ const list = [
   require('./penguin'),
   require('./yacht'),
   require('./pirate'),
-  require('./sixnimmt')
+  require('./sixnimmt'),
+  require('./marble')
 ];
 const byId = {};
 for (const g of list) byId[g.id] = g;

@@ -17,5 +17,6 @@ import penguin from './penguin.js';
 import yacht from './yacht.js';
 import pirate from './pirate.js';
 import sixnimmt from './sixnimmt.js';
+import marble from './marble.js';
 
-export const renderers = { chess, go, othello, davinci, louie, halligalli, uno, gomoku, quoridor, blokus, rummikub, dobble, splendor, onecard, jenga, penguin, yacht, pirate, sixnimmt };
+export const renderers = { chess, go, othello, davinci, louie, halligalli, uno, gomoku, quoridor, blokus, rummikub, dobble, splendor, onecard, jenga, penguin, yacht, pirate, sixnimmt, marble };

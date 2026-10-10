@@ -113,5 +113,43 @@ const only = process.argv.slice(2);
     for (const [p, k] of [[a, '0,0'], [c, '6,6'], [a, '1,3'], [c, '0,5'], [a, '5,1'], [c, '2,6']]) { await click(p, 'ice:' + k); await p.waitForTimeout(900); }
   });
 
+  await run('yacht', 2, async ([a]) => {
+    await a.bringToFront(); await a.click('.controls button:has-text("굴리기")'); await a.waitForTimeout(2200);
+    await click(a, 'die:1'); await click(a, 'die:3');
+  });
+  await run('pirate', 3, async pl => {
+    for (const [k, i] of [[0, 0], [1, 6], [2, 1], [0, 7]]) {
+      const p = pl[k]; const st = await p.evaluate(() => document.querySelector('#board').__test.state());
+      if (st.over || st.turn !== k) break;
+      await p.evaluate(i => document.querySelector('#board').__test.face(i), i); await p.waitForTimeout(150); await click(p, 'slot:' + i); await p.waitForTimeout(700);
+      if (await p.evaluate(() => document.querySelector('#board').__test.state().over)) break;
+    }
+    await pl[0].evaluate(() => document.querySelector('#board').__test.face(3));
+  });
+  await run('sixnimmt', 3, async pl => {
+    for (let r = 0; r < 2; r++) {
+      for (const p of pl) { const st = await p.evaluate(() => document.querySelector('#board').__test.state()); if (st.phase === 'choose' && st.myChoice == null) await click(p, 'card:' + st.myHand[st.myHand.length - 1]); }
+      for (let k = 0; k < 20; k++) {
+        await pl[0].waitForTimeout(500);
+        for (const p of pl) { const st = await p.evaluate(() => document.querySelector('#board').__test.state()); const busy = await p.evaluate(() => document.querySelector('#board').__test.busy()); if (st.phase === 'pickRow' && st.picker === st.mySeat && !busy) await click(p, 'row:0'); }
+        const st0 = await pl[0].evaluate(() => document.querySelector('#board').__test.state()); const b0 = await pl[0].evaluate(() => document.querySelector('#board').__test.busy());
+        if (st0.phase === 'choose' && !b0) break;
+      }
+    }
+  });
+  await run('marble', 3, async pl => {
+    for (let k = 0; k < 9; k++) {
+      for (let t = 0; t < 40; t++) { if (!(await pl[0].evaluate(() => document.querySelector('#board').__test.busy()))) break; await pl[0].waitForTimeout(250); }
+      const st = await pl[0].evaluate(() => document.querySelector('#board').__test.state()); if (st.over) break;
+      const p = pl[st.turn]; await p.bringToFront(); await p.waitForTimeout(200);
+      const pp = st.players[st.turn];
+      if (st.phase === 'roll') { if (pp.fly) await click(p, 'tile:5'); else await p.click('.controls button:has-text("굴리기")'); }
+      else if (st.phase === 'buy') await p.click('.controls button:has-text("사기")');
+      else if (st.phase === 'build') await p.click('.controls button:has-text("짓기")');
+      await p.waitForTimeout(500);
+    }
+    for (let t = 0; t < 40; t++) { if (!(await pl[0].evaluate(() => document.querySelector('#board').__test.busy()))) break; await pl[0].waitForTimeout(250); }
+  });
+
   await b.close(); server.close(); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });
