@@ -14,5 +14,8 @@ import splendor from './splendor.js';
 import onecard from './onecard.js';
 import jenga from './jenga.js';
 import penguin from './penguin.js';
+import yacht from './yacht.js';
+import pirate from './pirate.js';
+import sixnimmt from './sixnimmt.js';
 
-export const renderers = { chess, go, othello, davinci, louie, halligalli, uno, gomoku, quoridor, blokus, rummikub, dobble, splendor, onecard, jenga, penguin };
+export const renderers = { chess, go, othello, davinci, louie, halligalli, uno, gomoku, quoridor, blokus, rummikub, dobble, splendor, onecard, jenga, penguin, yacht, pirate, sixnimmt };

@@ -15,7 +15,10 @@ const list = [
   require('./splendor'),
   require('./onecard'),
   require('./jenga'),
-  require('./penguin')
+  require('./penguin'),
+  require('./yacht'),
+  require('./pirate'),
+  require('./sixnimmt')
 ];
 const byId = {};
 for (const g of list) byId[g.id] = g;

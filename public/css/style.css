@@ -273,3 +273,15 @@ body.inRoom .credit{padding:10px;font-size:12px}
 .pgWarn{position:absolute;top:46px;left:50%;transform:translateX(-50%);background:rgba(20,16,12,.85);border:1px solid #6a5232;padding:6px 14px;border-radius:999px;font-weight:700;pointer-events:none;z-index:4}
 .pgWarn.bad{background:rgba(120,20,20,.9);border-color:#ff7a6a}
 .pgWarn.hidden{display:none}
+.yachtSheet{margin-bottom:10px;overflow-x:auto}
+.yachtSheet table{width:100%;border-collapse:collapse;font-size:13px}
+.yachtSheet th,.yachtSheet td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.08);text-align:center}
+.yachtSheet tr th:first-child{text-align:left;color:#cdbb9c;font-weight:600;white-space:nowrap}
+.yachtSheet th.turn{color:#ffc861}
+.yachtSheet td.done{color:#f4ead8;font-weight:700}
+.yachtSheet td.pv{color:#9a8a70;font-style:italic}
+.yachtSheet td.mine{color:#ffd56b;cursor:pointer;background:rgba(255,200,97,.12);border-radius:6px;font-style:normal;font-weight:800}
+.yachtSheet td.mine:hover{background:rgba(255,200,97,.3)}
+.yachtSheet td.mine.zero{color:#b98a6a}
+.yachtSheet tr.sub td,.yachtSheet tr.sub th{font-size:12px;color:#9a8a70}
+.yachtSheet tr.tot td,.yachtSheet tr.tot th{font-weight:800;color:#ffc861;border-top:2px solid rgba(255,200,97,.4)}
