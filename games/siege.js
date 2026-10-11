@@ -23,26 +23,42 @@ const SHOT_SECS = 20;
 const MODES = { 0: { budget: 24, secs: 150 }, 1: { budget: 18, secs: 90 } };
 
 function sizeOf(it) { return it.k === 'f' ? FLAG : SIZES[it.o]; }
-const overlap = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > 1e-6;
+const overlap = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > 1e-3;
+const q20 = v => Math.round(Number(v) * 20) / 20;
 
-// Drop each piece straight down onto the plot or the pieces under it.
-// Returns pieces with local centre y filled in, or { error }.
+// Validate a castle placed piece by piece, Minecraft style: every piece has
+// an explicit centre (x, y, z) in plot coordinates. Pieces may sit on the
+// plot, on other pieces, against their sides or hang under them (anything
+// unsupported simply falls when the physics starts). Pieces without a y
+// are dropped straight down (used by tests and old drafts).
 function stack(items, budget) {
   const out = [];
   let blocks = 0, flags = 0;
   for (const raw of items) {
-    const it = { k: raw.k === 'f' ? 'f' : 'b', o: raw.k === 'f' ? 0 : Number(raw.o), x: Math.round(Number(raw.x) * 2) / 2, z: Math.round(Number(raw.z) * 2) / 2 };
+    const it = { k: raw.k === 'f' ? 'f' : 'b', o: raw.k === 'f' ? 0 : Number(raw.o) };
     if (it.k === 'b' && !SIZES[it.o]) return { error: '잘못된 블록 방향이에요.' };
+    const free = raw.y != null;
+    it.x = free ? q20(raw.x) : Math.round(Number(raw.x) * 2) / 2;
+    it.z = free ? q20(raw.z) : Math.round(Number(raw.z) * 2) / 2;
     if (!isFinite(it.x) || !isFinite(it.z)) return { error: '잘못된 위치예요.' };
     const [sx, sy, sz] = sizeOf(it);
-    if (Math.abs(it.x) + sx / 2 > HALF + 1e-6 || Math.abs(it.z) + sz / 2 > HALF + 1e-6) return { error: '성터 밖이에요.' };
-    let bottom = 0;
+    if (Math.abs(it.x) + sx / 2 > HALF + 1e-3 || Math.abs(it.z) + sz / 2 > HALF + 1e-3) return { error: '성터 밖이에요.' };
+    if (free) {
+      it.y = q20(raw.y);
+      if (!isFinite(it.y) || it.y - sy / 2 < -1e-3) return { error: '성터 아래로는 놓을 수 없어요.' };
+    } else {
+      let bottom = 0;
+      for (const o of out) {
+        const [ox, oy, oz] = sizeOf(o);
+        if (overlap(it.x - sx / 2, it.x + sx / 2, o.x - ox / 2, o.x + ox / 2) && overlap(it.z - sz / 2, it.z + sz / 2, o.z - oz / 2, o.z + oz / 2)) bottom = Math.max(bottom, o.y + oy / 2);
+      }
+      it.y = bottom + sy / 2;
+    }
+    if (it.y + sy / 2 > MAX_TOP + 1e-3) return { error: '너무 높아요.' };
     for (const o of out) {
       const [ox, oy, oz] = sizeOf(o);
-      if (overlap(it.x - sx / 2, it.x + sx / 2, o.x - ox / 2, o.x + ox / 2) && overlap(it.z - sz / 2, it.z + sz / 2, o.z - oz / 2, o.z + oz / 2)) bottom = Math.max(bottom, o.y + oy / 2);
+      if (overlap(it.x - sx / 2, it.x + sx / 2, o.x - ox / 2, o.x + ox / 2) && overlap(it.y - sy / 2, it.y + sy / 2, o.y - oy / 2, o.y + oy / 2) && overlap(it.z - sz / 2, it.z + sz / 2, o.z - oz / 2, o.z + oz / 2)) return { error: '블록끼리 겹쳐요.' };
     }
-    if (bottom + sy > MAX_TOP) return { error: '너무 높아요.' };
-    it.y = bottom + sy / 2;
     if (it.k === 'f') flags++; else blocks++;
     out.push(it);
   }
@@ -246,7 +262,7 @@ module.exports = {
       const items = Array.isArray(action.items) ? action.items.slice(0, 60) : [];
       const r = stack(items, state.budget);
       if (r.error) return { error: r.error };
-      state.drafts[seat] = r.items.map(({ k, o, x, z }) => ({ k, o, x, z }));
+      state.drafts[seat] = r.items.map(({ k, o, x, y, z }) => ({ k, o, x, y, z }));
       if (action.type === 'submit') {
         if (r.flags !== 1) return { error: '깃발을 하나 놓아야 해요.' };
         if (topOf(r.items) < MIN_HEIGHT - 1e-6) return { error: '성을 블록 3층 높이 이상으로 쌓아야 해요.' };

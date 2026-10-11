@@ -208,7 +208,10 @@ export class Stage {
       for (const i of is) {
         let o = i.object;
         while (o && o.userData.pick === undefined) o = o.parent;
-        if (o && o.visible !== false) return { obj: o, pick: o.userData.pick, point: i.point };
+        if (o && o.visible !== false) {
+          const normal = i.face ? i.face.normal.clone().transformDirection(i.object.matrixWorld) : null;
+          return { obj: o, pick: o.userData.pick, point: i.point, normal };
+        }
       }
       return null;
     };
@@ -216,13 +219,13 @@ export class Stage {
     // A game can claim a drag (e.g. a slingshot pull): onDragStart(e, hit)
     // returning true routes the gesture to onDragMove/onDragEnd instead of
     // orbiting the camera.
-    let claimed = null;
+    let claimed = null, button = 0;
     this._down = e => {
       if (this.onDragStart && pointers.size === 0 && this.onDragStart(e, this._hit(e))) {
         claimed = e.pointerId; el.setPointerCapture?.(e.pointerId);
         return;
       }
-      downOnCanvas = true; moved = 0;
+      downOnCanvas = true; moved = 0; button = e.button || 0;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture?.(e.pointerId);
       if (pointers.size === 2) {
@@ -249,7 +252,7 @@ export class Stage {
       } else if (e.target === el && this.onHover && e.pointerType === 'mouse') {
         const h = this._hit(e);
         el.style.cursor = h ? 'pointer' : 'grab';
-        this.onHover(h ? h.pick : null, h ? h.point : null, h ? h.obj : null);
+        this.onHover(h ? h.pick : null, h ? h.point : null, h ? h.obj : null, h ? h.normal : null);
       }
     };
     this._up = e => {
@@ -260,7 +263,7 @@ export class Stage {
       el.style.cursor = 'grab';
       if (downOnCanvas && moved <= 6 && pointers.size === 0 && this.onPick) {
         const h = this._hit(e);
-        this.onPick(h ? h.pick : null, h ? h.point : null, h ? h.obj : null, e.pointerType || 'mouse');
+        this.onPick(h ? h.pick : null, h ? h.point : null, h ? h.obj : null, e.pointerType || 'mouse', { normal: h ? h.normal : null, button });
       }
       if (pointers.size === 0) downOnCanvas = false;
     };

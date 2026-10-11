@@ -134,20 +134,24 @@ export default function siege(ctx) {
   }
 
   // ------------------------------------------------------------ build mode
-  let items = [], orient = 0, flagMode = false, ghost = null, hoverLocal = null, sentAt = 0, draftT = 0;
+  // Minecraft style: point at any face (the pedestal or one of your blocks)
+  // and the new block attaches to that face. Left click places, right click
+  // (or break mode) removes the block you point at.
+  let items = [], orient = 0, flagMode = false, breakMode = false, ghost = null, target = null, armed = null, draftT = 0;
   const myPlot = () => st.plots[seat];
-  function stackLocal(list) {
+  const EPS = 1e-3;
+  const ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > EPS;
+  // give old drafts without a height a dropped-down y
+  function withHeights(list) {
     const out = [];
     for (const raw of list) {
       const it = { ...raw };
-      const [sx, sy, sz] = sizeOf(it);
-      let bottom = 0;
-      for (const o of out) {
-        const [ox, , oz] = sizeOf(o); const oy = sizeOf(o)[1];
-        const ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > 1e-6;
-        if (ov(it.x - sx / 2, it.x + sx / 2, o.x - ox / 2, o.x + ox / 2) && ov(it.z - sz / 2, it.z + sz / 2, o.z - oz / 2, o.z + oz / 2)) bottom = Math.max(bottom, o.y + oy / 2);
+      if (it.y == null) {
+        const [sx, sy, sz] = sizeOf(it);
+        let bottom = 0;
+        for (const o of out) { const [ox, oy, oz] = sizeOf(o); if (ov(it.x - sx / 2, it.x + sx / 2, o.x - ox / 2, o.x + ox / 2) && ov(it.z - sz / 2, it.z + sz / 2, o.z - oz / 2, o.z + oz / 2)) bottom = Math.max(bottom, o.y + oy / 2); }
+        it.y = bottom + sy / 2;
       }
-      it.y = bottom + sy / 2;
       out.push(it);
     }
     return out;
@@ -158,16 +162,17 @@ export default function siege(ctx) {
   function rebuildMine() {
     myG.clear();
     const p = myPlot();
-    stackLocal(items).forEach((it, i) => {
+    items.forEach((it, i) => {
       const m = blockMesh(it.k, sizeOf(it), seat);
       m.position.set(p.cx + it.x, Y0 + C.PED_TOP + it.y, p.cz + it.z);
       m.traverse(o => { o.userData.pick = { mine: i }; });
       m.userData.pick = { mine: i };
       myG.add(m);
     });
+    stage.setPickables(st && st.phase === 'build' ? [...pedestals, ...myG.children] : []);
     updateBuildUi();
   }
-  // the same half-cell grid and bounds the server enforces
+  // snap a free coordinate to the half-cell grid inside the plot
   function snapAxis(v, size) {
     const lim = C.HALF - size / 2;
     let c = Math.round(v * 2) / 2;
@@ -175,55 +180,104 @@ export default function siege(ctx) {
     while (c < -lim - 1e-9) c += 0.5;
     return c;
   }
-  function candidate(localX, localZ) {
+  const r20 = v => Math.round(v * 20) / 20;
+  // the block that would be placed against the pointed face
+  function candidate(t) {
     const it = flagMode ? { k: 'f', o: 0 } : { k: 'b', o: orient };
-    const [sx, , sz] = sizeOf(it);
-    it.x = snapAxis(localX, sx); it.z = snapAxis(localZ, sz);
+    const [sx, sy, sz] = sizeOf(it);
+    if (t.kind === 'plot') { it.x = snapAxis(t.lx, sx); it.z = snapAxis(t.lz, sz); it.y = sy / 2; return it; }
+    const o = items[t.index], [ox, oy, oz] = sizeOf(o);
+    const n = t.n;
+    if (n === '+y') { it.x = snapAxis(t.lx, sx); it.z = snapAxis(t.lz, sz); it.y = o.y + oy / 2 + sy / 2; }
+    else if (n === '-y') { it.x = snapAxis(t.lx, sx); it.z = snapAxis(t.lz, sz); it.y = o.y - oy / 2 - sy / 2; }
+    else {
+      it.y = o.y - oy / 2 + sy / 2;                       // bottoms line up, like a brick course
+      if (n === '+x') { it.x = o.x + ox / 2 + sx / 2; it.z = snapAxis(t.lz, sz); }
+      if (n === '-x') { it.x = o.x - ox / 2 - sx / 2; it.z = snapAxis(t.lz, sz); }
+      if (n === '+z') { it.z = o.z + oz / 2 + sz / 2; it.x = snapAxis(t.lx, sx); }
+      if (n === '-z') { it.z = o.z - oz / 2 - sz / 2; it.x = snapAxis(t.lx, sx); }
+    }
+    it.x = r20(it.x); it.y = r20(it.y); it.z = r20(it.z);
     return it;
   }
+  function problem(it) {
+    const [sx, sy, sz] = sizeOf(it);
+    if (it.k === 'f' && hasFlag()) return '깃발은 하나만 놓을 수 있어요.';
+    if (it.k !== 'f' && blocksUsed() >= st.budget) return `블록을 다 썼어요 (${st.budget}개).`;
+    if (Math.abs(it.x) + sx / 2 > C.HALF + EPS || Math.abs(it.z) + sz / 2 > C.HALF + EPS) return '성터 밖이에요.';
+    if (it.y - sy / 2 < -EPS) return '성터 아래로는 놓을 수 없어요.';
+    if (it.y + sy / 2 > C.MAX_TOP + EPS) return '너무 높아요.';
+    for (const o of items) {
+      const [ox, oy, oz] = sizeOf(o);
+      if (ov(it.x - sx / 2, it.x + sx / 2, o.x - ox / 2, o.x + ox / 2) && ov(it.y - sy / 2, it.y + sy / 2, o.y - oy / 2, o.y + oy / 2) && ov(it.z - sz / 2, it.z + sz / 2, o.z - oz / 2, o.z + oz / 2)) return '다른 블록과 겹쳐요.';
+    }
+    return null;
+  }
+  function faceOf(normal) {
+    if (!normal) return '+y';
+    const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+    if (ay >= ax && ay >= az) return normal.y > 0 ? '+y' : '-y';
+    if (ax >= az) return normal.x > 0 ? '+x' : '-x';
+    return normal.z > 0 ? '+z' : '-z';
+  }
+  function targetFrom(pick, point, normal) {
+    if (!pick || !point || seat < 0) return null;
+    const p = myPlot();
+    const lx = point.x - p.cx, lz = point.z - p.cz;
+    if (pick.plot === seat) return { kind: 'plot', lx, lz };
+    if (pick.mine != null && items[pick.mine]) return { kind: 'block', index: pick.mine, n: faceOf(normal), lx, lz };
+    return null;
+  }
+  const sameTarget = (a, b) => a && b && a.kind === b.kind && a.index === b.index && a.n === b.n && Math.abs(a.lx - b.lx) < 0.25 && Math.abs(a.lz - b.lz) < 0.25;
+  const breakTint = new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.45, depthWrite: false });
   function drawGhost() {
     if (ghost) { S.remove(ghost); ghost = null; }
-    if (!hoverLocal || st.phase !== 'build' || st.done[seat]) return;
-    const it = candidate(hoverLocal.x, hoverLocal.z);
-    const placed = stackLocal([...items, it]).pop();
-    const ok = (flagMode ? !hasFlag() : blocksUsed() < st.budget) && placed.y + sizeOf(placed)[1] / 2 <= C.MAX_TOP;
-    ghost = new THREE.Mesh(boxGeo(sizeOf(it)), new THREE.MeshBasicMaterial({ color: ok ? 0x8cf0a6 : 0xff6a5a, transparent: true, opacity: 0.55, depthWrite: false }));
+    if (!target || !st || st.phase !== 'build' || st.done[seat]) return;
     const p = myPlot();
-    ghost.position.set(p.cx + placed.x, Y0 + C.PED_TOP + placed.y, p.cz + placed.z);
-    ghost.userData.ok = ok; ghost.userData.it = it;
-    S.add(ghost);
-  }
-  function addPiece() {
-    if (!ghost || !ghost.userData.ok) {
-      if (flagMode && hasFlag()) ctx.toast('깃발은 하나만 놓을 수 있어요. 되돌리기로 치울 수 있어요.');
-      else if (!flagMode && blocksUsed() >= st.budget) ctx.toast(`블록을 다 썼어요 (${st.budget}개).`);
+    if (breakMode) {
+      if (target.kind !== 'block') return;
+      const o = items[target.index];
+      ghost = new THREE.Mesh(boxGeo(sizeOf(o).map(v => v + 0.06)), breakTint);
+      ghost.position.set(p.cx + o.x, Y0 + C.PED_TOP + o.y, p.cz + o.z);
+      S.add(ghost);
       return;
     }
+    const it = candidate(target);
+    const why = problem(it);
+    ghost = new THREE.Mesh(boxGeo(sizeOf(it)), new THREE.MeshBasicMaterial({ color: why ? 0xff6a5a : 0x8cf0a6, transparent: true, opacity: 0.55, depthWrite: false }));
+    ghost.position.set(p.cx + it.x, Y0 + C.PED_TOP + it.y, p.cz + it.z);
+    ghost.userData = { it, why };
+    S.add(ghost);
+  }
+  function place() {
+    if (!ghost || breakMode) return;
+    if (ghost.userData.why) { ctx.toast(ghost.userData.why); return; }
     items.push(ghost.userData.it);
-    if (flagMode) flagMode = false;
+    if (flagMode) { flagMode = false; }
     sfx.knock(0.35);
+    rebuildMine(); target = null; drawGhost(); sendDraft();
+  }
+  function breakAt(t) {
+    if (!t || t.kind !== 'block') return;
+    items.splice(t.index, 1);
+    sfx.tile(0.4);
+    target = null;
     rebuildMine(); drawGhost(); sendDraft();
   }
   function sendDraft() {
     clearTimeout(draftT);
     draftT = setTimeout(() => ctx.send({ type: 'draft', items }), 250);
   }
-  function template(kind) {
+  // test helper only: lay out a castle quickly (not offered in the UI)
+  function testCastle(kind) {
     const out = [];
-    const B = st.budget;
     if (kind === 'fort') {
       for (let l = 0; l < 4; l++) out.push({ k: 'b', o: 0, x: -1.5, z: -2.5 }, { k: 'b', o: 0, x: 1.5, z: -2.5 }, { k: 'b', o: 0, x: -1.5, z: 2.5 }, { k: 'b', o: 0, x: 1.5, z: 2.5 }, { k: 'b', o: 1, x: -2.5, z: 0 }, { k: 'b', o: 1, x: 2.5, z: 0 });
-    } else if (kind === 'tower') {
-      for (let l = 0; l < 10; l++) for (let k = -1; k <= 1; k++) out.push(l % 2 ? { k: 'b', o: 1, x: k, z: 0 } : { k: 'b', o: 0, x: 0, z: k });
     } else {
-      for (const x of [-2, -1, 0, 1, 2]) out.push({ k: 'b', o: 2, x, z: -2.7 + 0.0 }, { k: 'b', o: 2, x, z: 2.7 });
-      for (const z of [-1.5, -0.5, 0.5, 1.5]) out.push({ k: 'b', o: 3, x: -2.7, z }, { k: 'b', o: 3, x: 2.7, z });
-      for (let l = 0; l < 6; l++) out.push(l % 2 ? { k: 'b', o: 1, x: 0, z: 0 } : { k: 'b', o: 0, x: 0, z: 0 });
+      for (let l = 0; l < 10; l++) for (let k = -1; k <= 1; k++) out.push(l % 2 ? { k: 'b', o: 1, x: k, z: 0 } : { k: 'b', o: 0, x: 0, z: k });
     }
-    // snap the thin uprights onto the grid the server uses
-    const fixed = out.slice(0, B).map(it => { const [sx, , sz] = sizeOf(it); return { ...it, x: snapAxis(it.x, sx), z: snapAxis(it.z, sz) }; });
-    fixed.push({ k: 'f', o: 0, x: 0, z: 0 });
-    items = fixed; flagMode = false;
+    items = withHeights([...out.slice(0, st.budget), { k: 'f', o: 0, x: 0, z: 0 }]);
+    flagMode = false;
     rebuildMine(); drawGhost(); sendDraft();
   }
 
@@ -369,16 +423,14 @@ export default function siege(ctx) {
     });
   }
 
-  const rotB = btn('🔄 회전 (R)', '', () => { orient = (orient + 1) % 4; flagMode = false; drawGhost(); updateBuildUi(); });
-  const flagB = btn('🚩 깃발 (F)', '', () => { flagMode = !flagMode; drawGhost(); updateBuildUi(); });
+  const rotB = btn('🔄 회전 (R)', '', () => { orient = (orient + 1) % 4; flagMode = false; breakMode = false; drawGhost(); updateBuildUi(); });
+  const flagB = btn('🚩 깃발 (F)', '', () => { flagMode = !flagMode; breakMode = false; drawGhost(); updateBuildUi(); });
+  const breakB = btn('⛏ 부수기 (X)', '', () => { breakMode = !breakMode; flagMode = false; drawGhost(); updateBuildUi(); });
   const undoB = btn('↩ 되돌리기 (Z)', 'ghost', () => { items.pop(); rebuildMine(); drawGhost(); sendDraft(); });
-  const clearB = btn('🗑 지우기', 'ghost', () => { if (items.length && confirm('다 지울까요?')) { items = []; rebuildMine(); drawGhost(); sendDraft(); } });
-  const tFort = btn('🏯 요새', 'ghost', () => template('fort'));
-  const tTower = btn('🗼 탑', 'ghost', () => template('tower'));
-  const tWall = btn('🧱 성벽', 'ghost', () => template('wall'));
+  const clearB = btn('🗑 전부 지우기', 'ghost', () => { if (items.length && confirm('다 지울까요?')) { items = []; rebuildMine(); drawGhost(); sendDraft(); } });
   const doneB = btn('✅ 완료', 'primary', () => { clearTimeout(draftT); ctx.send({ type: 'submit', items }); });
   const resign = btn('항복', 'ghost', () => { if (confirm('정말 항복할까요?')) ctx.send({ type: 'resign' }); });
-  const buildBar = el('span', 'row'); buildBar.append(rotB, flagB, undoB, clearB, tFort, tTower, tWall, doneB);
+  const buildBar = el('span', 'row'); buildBar.append(rotB, flagB, breakB, undoB, clearB, doneB);
   bar.append(buildBar, resign);
   const hud = el('div', 'hud'); holder.appendChild(hud);
   const powerEl = el('div', 'siegePower'); holder.appendChild(powerEl); powerEl.style.display = 'none';
@@ -389,11 +441,12 @@ export default function siege(ctx) {
 
   function updateBuildUi() {
     if (!st || st.phase !== 'build' || seat < 0) return;
-    const h = heightOf(stackLocal(items));
+    const h = heightOf(items);
     rotB.textContent = `🔄 ${ORIENT_KO[orient]} (R)`;
     flagB.classList.toggle('primary', flagMode);
+    breakB.classList.toggle('primary', breakMode);
     doneB.disabled = st.done[seat] || !hasFlag() || h < C.MIN_HEIGHT - 1e-6;
-    for (const b of [rotB, flagB, undoB, clearB, tFort, tTower, tWall]) b.disabled = st.done[seat];
+    for (const b of [rotB, flagB, breakB, undoB, clearB]) b.disabled = st.done[seat];
   }
   let clockOffset = 0;
   function updateUi() {
@@ -402,10 +455,10 @@ export default function siege(ctx) {
     resign.disabled = st.over || seat < 0 || !st.alive[seat];
     const left = Math.max(0, Math.ceil((st.deadline - (Date.now() + clockOffset)) / 1000));
     if (building) {
-      const h = heightOf(stackLocal(items));
+      const h = heightOf(items);
       ctx.status.innerHTML = `<b>🏗️ 건설 단계</b> · 남은 시간 <b class="siegeClock">${left}</b>초<br>
         블록 <b>${blocksUsed()}</b>/${st.budget} · 깃발 ${hasFlag() ? '✔' : '<b style="color:#ff8a6a">아직</b>'} · 높이 ${h.toFixed(1)} ${h >= C.MIN_HEIGHT - 1e-6 ? '✔' : `(최소 ${C.MIN_HEIGHT.toFixed(1)})`}<br>
-        <span class="muted">${seat < 0 ? '구경 중' : st.done[seat] ? '완료! 다른 사람을 기다리는 중…' : '성터를 클릭해 블록을 쌓아요. R 회전 · F 깃발 · Z 되돌리기. 템플릿으로 시작해도 돼요.'}</span>`;
+        <span class="muted">${seat < 0 ? '구경 중' : st.done[seat] ? '완료! 다른 사람을 기다리는 중…' : '마인크래프트처럼 면을 클릭하면 그 면에 블록이 붙어요. 좌클릭 놓기 · 우클릭 부수기 · R 회전 · F 깃발 · X 부수기 모드 · Z 되돌리기 · 드래그로 시점 돌리기'}</span>`;
     } else if (!st.over) {
       ctx.status.innerHTML = `<b>⚔️ 공격 단계</b> · 차례: <b>${st.names[st.turn]}</b>${myTurn() ? ' (나)' : ''} · <b class="siegeClock">${playing ? '' : left + '초'}</b><br>
         <span class="muted">${playing ? '와르르…' : myTurn() ? '내 새총을 잡고 뒤로 당겼다 놓으세요! (좌우로 방향, 아래로 당기면 높이 쏴요)' : seat >= 0 && !st.alive[seat] ? '탈락했어요. 구경하세요!' : '상대가 조준하는 중…'}</span><br>
@@ -416,27 +469,30 @@ export default function siege(ctx) {
   }
 
   // ------------------------------------------------------------ input
-  stage.onHover = (pick, point) => {
+  stage.onHover = (pick, point, obj, normal) => {
     if (!st || st.phase !== 'build' || seat < 0 || st.done[seat]) return;
-    if (!pick || !point || (pick.plot !== seat && pick.mine == null)) { if (hoverLocal) { hoverLocal = null; drawGhost(); } return; }
-    const p = myPlot();
-    const nx = point.x - p.cx, nz = point.z - p.cz;
-    hoverLocal = { x: nx, z: nz };
-    drawGhost();
+    const t = targetFrom(pick, point, normal);
+    if (!t && !target) return;
+    if (sameTarget(t, target)) return;
+    target = t; drawGhost();
   };
-  stage.onPick = (pick, point, obj, ptr) => {
-    if (!st || st.phase !== 'build' || seat < 0 || st.done[seat] || !pick) return;
-    if (pick.plot !== seat && pick.mine == null) return;
-    const p = myPlot();
-    const local = { x: point.x - p.cx, z: point.z - p.cz };
-    if (ptr === 'touch' && !(hoverLocal && Math.abs(hoverLocal.x - local.x) < 0.3 && Math.abs(hoverLocal.z - local.z) < 0.3 && ghost)) { hoverLocal = local; drawGhost(); return; }
-    hoverLocal = local; drawGhost(); addPiece();
+  stage.onPick = (pick, point, obj, ptr, info) => {
+    if (!st || st.phase !== 'build' || seat < 0 || st.done[seat]) return;
+    const t = targetFrom(pick, point, info && info.normal);
+    if (!t) return;
+    const breaking = breakMode || (info && info.button === 2);
+    // on touch the first tap previews, the second tap on the same spot acts
+    if (ptr === 'touch' && !(armed && sameTarget(armed, t))) { armed = t; target = t; drawGhost(); return; }
+    armed = null;
+    if (breaking) { breakAt(t); return; }
+    target = t; drawGhost(); place();
   };
   const onKey = e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || !st || st.phase !== 'build') return;
     if (e.key === 'r' || e.key === 'R') rotB.click();
     if (e.key === 'f' || e.key === 'F') flagB.click();
     if (e.key === 'z' || e.key === 'Z') undoB.click();
+    if (e.key === 'x' || e.key === 'X') breakB.click();
   };
   window.addEventListener('keydown', onKey);
 
@@ -455,7 +511,10 @@ export default function siege(ctx) {
   ctx.root.__test = {
     state: () => st,
     playing: () => playing,
-    template: k => template(k),
+    template: k => testCastle(k),
+    target: (kind, index, n, lx, lz) => { target = { kind, index, n, lx, lz }; drawGhost(); return ghost && ghost.userData.it ? { it: ghost.userData.it, why: ghost.userData.why } : null; },
+    place: () => place(),
+    items: () => items,
     submit: () => doneB.click(),
     shoot: a => ctx.send({ type: 'shoot', ...a }),
     screen: k => {
@@ -474,7 +533,7 @@ export default function siege(ctx) {
       clockOffset = state.now - Date.now();
       if (!built) {
         C = state.consts; built = true; buildArena();
-        if (seat >= 0) { items = (state.myDraft || []).map(x => ({ ...x })); rebuildMine(); }
+        if (seat >= 0) { items = withHeights(state.myDraft || []); rebuildMine(); }
         if (state.phase === 'build' && seat >= 0) { const p = myPlot(); stage.setView({ theta: Math.atan2(p.cx, p.cz), phi: 0.9, radius: 14 }, false); stage.target.set(p.cx, Y0 + 2, p.cz); }
       }
       const building = state.phase === 'build';

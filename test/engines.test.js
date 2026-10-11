@@ -756,6 +756,20 @@ t('building: stacking, budget, flag and minimum height are enforced', () => {
   assert.ok(sg.move(s, 0, { type: 'submit', items: [...tower.slice(0, 24), { k: 'b', o: 0, x: 0, z: 2 }, tower[24]] }).error, 'over budget');
   assert.strictEqual(sg.view(s, 1).myDraft.length, 0, 'drafts stay private');
 });
+t('Minecraft-style free placement: side faces, hanging pieces, no overlaps', () => {
+  const st = sg._internals.stack;
+  const base = { k: 'b', o: 0, x: 0, y: 0.3, z: 0 };
+  // a block stuck to the +x end face of the first one, same course
+  const r = st([base, { k: 'b', o: 1, x: 2, y: 0.3, z: 1 }, { k: 'b', o: 0, x: 0, y: 0.9, z: 0 }, { k: 'b', o: 1, x: 0, y: 1.5, z: 1 }], 24);
+  assert.ok(!r.error, r.error);
+  assert.strictEqual(r.items[3].y, 1.5, 'explicit heights are kept, so overhangs are allowed');
+  assert.ok(st([base, { k: 'b', o: 1, x: 1, y: 0.3, z: 0 }], 24).error.includes('겹'), 'overlap rejected');
+  assert.ok(st([{ k: 'b', o: 0, x: 0, y: 0.1, z: 0 }], 24).error, 'below the plot rejected');
+  const s = sg.create(P2, {});
+  const castle = [base, { k: 'b', o: 1, x: 0, y: 0.9, z: 0 }, { k: 'b', o: 0, x: 0, y: 1.5, z: 0 }, { k: 'f', x: 0, y: 2.2, z: 0 }];
+  assert.ok(sg.move(s, 0, { type: 'submit', items: castle }).ok);
+  assert.strictEqual(s.drafts[0][3].y, 2.2);
+});
 t('the tower survives settling and shots are simulated on the server', () => {
   const s = sg.create(P2, {});
   sg.move(s, 0, { type: 'submit', items: tower });
